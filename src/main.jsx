@@ -266,16 +266,6 @@ function App() {
     return <DownloadAppScreen />;
   }
 
-  const [appState, setAppState] = useStoredState();
-  const [activeTab, setActiveTab] = useState(() => window.location.hash.replace('#', '') || 'home');
-  const [quoteIndex, setQuoteIndex] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
-  const [toast, setToast] = useState('');
-  const [rescueActive, setRescueActive] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(rescueSeconds);
-  const [journalDraft, setJournalDraft] = useState({ mood: 'Steady', trigger: '', note: '' });
-  const [showPledgeModal, setShowPledgeModal] = useState(false);
-  const [activeStatModal, setActiveStatModal] = useState(null);
 
   useEffect(() => {
     const onHashChange = () => setActiveTab(window.location.hash.replace('#', '') || 'home');
