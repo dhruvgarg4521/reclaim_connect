@@ -1,85 +1,77 @@
-
 /**
- * Quick Placeholder Asset Generator
- * 
- * This script creates simple placeholder images for testing your app.
- * Replace these with professional designs before publishing to Play Store.
- * 
- * Usage: node create-placeholder-assets.js
+ * Placeholder PNG asset generator for EAS / Expo builds.
+ *
+ * Creates: icon.png, adaptive-icon.png, splash.png, favicon.png
+ *
+ * Usage: npm run create-assets
  */
 
 const fs = require('fs');
 const path = require('path');
+const sharp = require('sharp');
 
-console.log('🎨 Creating placeholder assets for testing...\n');
+const BG = '#0B1014';
+const ACCENT = '#4CAF50';
+const TEXT = '#FFFFFF';
 
 const assetsDir = path.join(__dirname, 'assets');
 
-// Ensure assets directory exists
-if (!fs.existsSync(assetsDir)) {
-  fs.mkdirSync(assetsDir);
-  console.log('✅ Created assets directory');
+function squareIconSvg(size, title, subtitle = '') {
+  const titleSize = Math.round(size * 0.1);
+  const subSize = Math.round(size * 0.045);
+  const subY = subtitle ? '54%' : '50%';
+  const subBlock = subtitle
+    ? `<text x="50%" y="${subY}" font-family="Arial, Helvetica, sans-serif" font-size="${subSize}"
+        fill="${TEXT}" text-anchor="middle" dominant-baseline="middle" opacity="0.75">${subtitle}</text>`
+    : '';
+
+  return `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
+  <rect width="${size}" height="${size}" fill="${BG}"/>
+  <text x="50%" y="50%" font-family="Arial, Helvetica, sans-serif" font-size="${titleSize}"
+        fill="${ACCENT}" text-anchor="middle" dominant-baseline="middle" font-weight="bold">${title}</text>
+  ${subBlock}
+</svg>`;
 }
 
-// Create SVG files that can be used as placeholders
-const createSVGIcon = (size, filename) => {
-  const svg = `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-  <rect width="${size}" height="${size}" fill="#0B1014"/>
-  <text x="50%" y="50%" font-family="Arial, sans-serif" font-size="${size/10}" 
-        fill="#4CAF50" text-anchor="middle" dominant-baseline="middle">
-    Reclaim
-  </text>
+function splashSvg(width, height) {
+  return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+  <rect width="${width}" height="${height}" fill="${BG}"/>
+  <text x="50%" y="48%" font-family="Arial, Helvetica, sans-serif" font-size="120"
+        fill="${ACCENT}" text-anchor="middle" dominant-baseline="middle" font-weight="bold">Reclaim</text>
+  <text x="50%" y="54%" font-family="Arial, Helvetica, sans-serif" font-size="56"
+        fill="${TEXT}" text-anchor="middle" dominant-baseline="middle" opacity="0.75">Path to Freedom</text>
 </svg>`;
-  
-  fs.writeFileSync(path.join(assetsDir, filename), svg);
-  console.log(`✅ Created ${filename} (${size}x${size})`);
-};
+}
 
-const createSVGSplash = () => {
-  const svg = `<svg width="1284" height="2778" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1284" height="2778" fill="#0B1014"/>
-  <text x="50%" y="50%" font-family="Arial, sans-serif" font-size="120" 
-        fill="#4CAF50" text-anchor="middle" dominant-baseline="middle">
-    Reclaim
-  </text>
-  <text x="50%" y="55%" font-family="Arial, sans-serif" font-size="60" 
-        fill="#FFFFFF" text-anchor="middle" dominant-baseline="middle" opacity="0.7">
-    Path to Freedom
-  </text>
-</svg>`;
-  
-  fs.writeFileSync(path.join(assetsDir, 'splash.svg'), svg);
-  console.log('✅ Created splash.svg (1284x2778)');
-};
+async function writePngFromSvg(svg, width, height, filename) {
+  const outPath = path.join(assetsDir, filename);
+  await sharp(Buffer.from(svg))
+    .resize(width, height)
+    .png()
+    .toFile(outPath);
 
-// Note about PNG conversion
-console.log('\n📝 Note: Created SVG files as placeholders.');
-console.log('\nTo convert to PNG (required for app):');
-console.log('\nOption 1 - Online converter:');
-console.log('  1. Visit https://svgtopng.com');
-console.log('  2. Upload each SVG file');
-console.log('  3. Download as PNG with correct dimensions');
-console.log('\nOption 2 - ImageMagick (if installed):');
-console.log('  convert assets/icon.svg -resize 1024x1024 assets/icon.png');
-console.log('  convert assets/adaptive-icon.svg -resize 1024x1024 assets/adaptive-icon.png');
-console.log('  convert assets/splash.svg -resize 1284x2778 assets/splash.png');
-console.log('  convert assets/favicon.svg -resize 48x48 assets/favicon.png');
-console.log('\nOption 3 - Use Canva or Figma to create proper designs');
-console.log('\n⚠️  Remember: Replace these placeholders with professional designs before publishing!\n');
+  const { size } = fs.statSync(outPath);
+  console.log(`✅ ${filename} (${width}x${height}, ${(size / 1024).toFixed(1)} KB)`);
+}
 
-// Create the SVG files
-try {
-  createSVGIcon(1024, 'icon.svg');
-  createSVGIcon(1024, 'adaptive-icon.svg');
-  createSVGIcon(48, 'favicon.svg');
-  createSVGSplash();
-  
-  console.log('\n✨ Success! Placeholder SVG files created in mobile-app/assets/');
-  console.log('\n🔄 Next steps:');
-  console.log('  1. Convert SVG files to PNG (see instructions above)');
-  console.log('  2. Test your app: npm start');
-  console.log('  3. Build APK: eas build --platform android\n');
-} catch (error) {
-  console.error('❌ Error creating assets:', error);
+async function main() {
+  console.log('🎨 Creating placeholder PNG assets...\n');
+
+  if (!fs.existsSync(assetsDir)) {
+    fs.mkdirSync(assetsDir, { recursive: true });
+    console.log('✅ Created assets directory\n');
+  }
+
+  await writePngFromSvg(squareIconSvg(1024, 'Reclaim'), 1024, 1024, 'icon.png');
+  await writePngFromSvg(squareIconSvg(1024, 'Reclaim'), 1024, 1024, 'adaptive-icon.png');
+  await writePngFromSvg(splashSvg(1284, 2778), 1284, 2778, 'splash.png');
+  await writePngFromSvg(squareIconSvg(48, 'R'), 48, 48, 'favicon.png');
+
+  console.log('\n✨ Done! PNG files are in mobile-app/assets/');
+  console.log('⚠️  Replace with final designs before Play Store release.\n');
+}
+
+main().catch((error) => {
+  console.error('❌ Error creating assets:', error.message);
   process.exit(1);
-}
+});

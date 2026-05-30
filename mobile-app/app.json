@@ -1,4 +1,3 @@
-
 {
   "expo": {
     "name": "Reclaim",
@@ -36,8 +35,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "your-project-id-here"
+        "projectId": "b58fb05b-1776-47a3-b72f-c6bfbe32eade"
       }
-    }
+    },
+    "owner": "fghjklkjhg"
   }
 }
