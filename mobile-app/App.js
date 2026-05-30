@@ -3,8 +3,15 @@ import React, { useEffect } from 'react';
 import { StyleSheet, SafeAreaView, StatusBar, BackHandler, Alert } from 'react-native';
 import { WebView } from 'react-native-webview';
 
-const APP_SECRET = 'reclaim_app_2024_secure'; // Must match the secret in your web app
-const WEB_APP_URL = 'https://reclaim-connect.vercel.app/'; // Replace with your actual Vercel URL
+/**
+ * IMPORTANT: Update these constants before building your APK
+ */
+
+// Must match APP_SECRET in src/main.jsx of your web app
+const APP_SECRET = 'reclaim_app_2024_secure';
+
+// TODO: Replace with your actual Vercel deployment URL (remove trailing slash!)
+const WEB_APP_URL = 'https://reclaim-connect.vercel.app';
 
 export default function App() {
   const webViewRef = React.useRef(null);
