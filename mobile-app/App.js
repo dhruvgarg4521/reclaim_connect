@@ -4,7 +4,7 @@ import { StyleSheet, SafeAreaView, StatusBar, BackHandler, Alert } from 'react-n
 import { WebView } from 'react-native-webview';
 
 const APP_SECRET = 'reclaim_app_2024_secure'; // Must match the secret in your web app
-const WEB_APP_URL = 'https://your-vercel-site.vercel.app'; // Replace with your actual Vercel URL
+const WEB_APP_URL = 'https://reclaim-connect.vercel.app/'; // Replace with your actual Vercel URL
 
 export default function App() {
   const webViewRef = React.useRef(null);
