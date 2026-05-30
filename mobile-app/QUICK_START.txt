@@ -1,0 +1,173 @@
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                    RECLAIM - REACT NATIVE WRAPPER
+                         QUICK START GUIDE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 PREREQUISITES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Node.js v18+ installed
+2. Expo CLI: npm install -g expo-cli eas-cli
+3. Expo account (free): https://expo.dev/signup
+4. Android Studio (for emulator) OR physical Android device
+5. Expo Go app installed on phone (for testing)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 STEP 1: SETUP (5 minutes)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+cd mobile-app
+npm install
+
+Then edit App.js:
+
+const WEB_APP_URL = 'https://YOUR-SITE.vercel.app';
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎨 STEP 2: CREATE ASSETS (10 minutes)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Create folder: mobile-app/assets/
+
+Add these images:
+  • icon.png (1024x1024)
+  • adaptive-icon.png (1024x1024)
+  • splash.png (1284x2778)
+  • favicon.png (48x48)
+
+Use Canva or any design tool. Keep them simple for now.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🧪 STEP 3: TEST LOCALLY (2 minutes)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+npm start
+
+Scan QR code with Expo Go app on your phone.
+App should load your web app (not the download screen).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📦 STEP 4: BUILD APK (20 minutes)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+eas login
+eas build:configure
+eas build --platform android --profile production
+
+Wait for build to complete. Download APK from provided link.
+Install on Android device and test.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🏪 STEP 5: PUBLISH TO PLAY STORE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+A. Create Google Play Developer Account
+   • Visit: https://play.google.com/console
+   • Pay $25 one-time fee
+   • Complete registration
+
+B. Create App Listing
+   • Click "Create app"
+   • App name: Reclaim
+   • Category: Health & Fitness
+
+C. Prepare Store Assets
+   • Icon: 512x512 PNG
+   • Feature graphic: 1024x500 PNG
+   • Screenshots: 1080x1920 PNG (minimum 2)
+   • Privacy policy URL
+
+D. Submit App
+   eas submit --platform android --profile production
+
+E. Wait for Review (1-7 days)
+   • Google reviews your app
+   • Check Play Console for status
+
+F. Go Live! 🎉
+   • Once approved, app appears on Play Store
+
+G. Update QR Code
+   • Replace URL in src/main.jsx with your Play Store link
+   • Line 169 and 176
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ VERIFICATION CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Before submitting to Play Store:
+
+□ App opens and shows web content (not download screen)
+□ Web browser shows download screen when visiting directly
+□ Back button works in app
+□ App icon displays correctly
+□ Privacy policy URL works
+□ All store listing sections complete
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💰 COSTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+• Expo Builds: FREE (limited) or $29/month (unlimited)
+• Google Play Developer: $25 one-time
+• Total minimum: $25
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔐 SECURITY REMINDER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+NEVER commit to GitHub:
+  ❌ service-account.json
+  ❌ .env files
+  ❌ keystore files (.jks)
+
+ALWAYS keep in sync:
+  ✓ APP_SECRET in App.js
+  ✓ APP_SECRET in src/main.jsx
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📚 DETAILED GUIDES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+For detailed instructions, see:
+  • README.md - Complete documentation
+  • SETUP_GUIDE.md - Step-by-step setup
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🆘 COMMON ISSUES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+App shows download screen?
+→ Check APP_SECRET matches in both apps
+
+Build fails?
+→ Run: expo doctor
+
+Can't submit to Play Store?
+→ Ensure service-account.json is set up correctly
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 NEXT STEPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Complete setup above
+2. Build and test APK
+3. Create Play Console account
+4. Submit app for review
+5. Once live, update QR code in web app
+
+Good luck! 🚀
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

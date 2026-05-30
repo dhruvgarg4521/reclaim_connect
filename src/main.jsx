@@ -31,7 +31,9 @@ import {
 import { appConfig } from './config';
 import './styles.css';
 
-const STORAGE_KEY = 'quittr-india-state-v1';
+const STORAGE_KEY = 'reclaim-india-state-v1';
+const APP_SECRET = 'reclaim_app_2024_secure'; // Change this to your own secret
+const AUTH_KEY = 'reclaim-app-authorized';
 const rescueSeconds = 90;
 
 const quotes = [
@@ -127,7 +129,129 @@ const defaultState = {
   journal: [], // Start with empty journal
 };
 
+function DownloadAppScreen() {
+  return (
+    <div className="download-app-screen">
+      <div className="download-container">
+        <div className="download-header">
+          <div className="app-logo">
+            <Sparkles size={48} />
+          </div>
+          <h1>Reclaim</h1>
+          <p className="app-tagline">Guruji's path to freedom and recovery</p>
+        </div>
+
+        <div className="download-content">
+          <div className="feature-highlight">
+            <Lock size={20} />
+            <p>This is an app-only experience</p>
+          </div>
+
+          <div className="qr-section">
+            <p className="qr-label">Scan to download</p>
+            <div className="qr-code-container">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent('https://play.google.com/store/apps/details?id=com.reclaim.app')}`}
+                alt="QR Code for app download"
+                className="qr-code"
+              />
+            </div>
+            <p className="qr-hint">Open camera app and point at QR code</p>
+          </div>
+
+          <div className="download-buttons">
+            <a
+              href="https://play.google.com/store/apps/details?id=com.reclaim.app"
+              className="store-button"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3,20.5V3.5C3,2.91 3.34,2.39 3.84,2.15L13.69,12L3.84,21.85C3.34,21.6 3,21.09 3,20.5M16.81,15.12L6.05,21.34L14.54,12.85L16.81,15.12M20.16,10.81C20.5,11.08 20.75,11.5 20.75,12C20.75,12.5 20.5,12.92 20.16,13.19L17.89,14.5L15.39,12L17.89,9.5L20.16,10.81M6.05,2.66L16.81,8.88L14.54,11.15L6.05,2.66Z" />
+              </svg>
+              <span>Get it on Google Play</span>
+            </a>
+          </div>
+
+          <div className="app-features">
+            <div className="feature-item">
+              <BadgeCheck size={18} />
+              <span>Daily accountability pledge</span>
+            </div>
+            <div className="feature-item">
+              <TimerReset size={18} />
+              <span>90-second SOS urge reset</span>
+            </div>
+            <div className="feature-item">
+              <Bot size={18} />
+              <span>24/7 AI recovery guide</span>
+            </div>
+            <div className="feature-item">
+              <Target size={18} />
+              <span>40-day transformation roadmap</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="download-footer">
+          <p>© 2024 Reclaim · Private & Secure</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
+  
+  useEffect(() => {
+    // Check for app token in URL params
+    const params = new URLSearchParams(window.location.search);
+    const urlToken = params.get('app_token');
+    
+    // Check if previously authorized
+    const storedAuth = localStorage.getItem(AUTH_KEY);
+    
+    if (urlToken === APP_SECRET) {
+      // Valid token in URL - authorize and store
+      localStorage.setItem(AUTH_KEY, 'true');
+      setIsAuthorized(true);
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (storedAuth === 'true') {
+      // Previously authorized
+      setIsAuthorized(true);
+    } else {
+      // Not authorized
+      setIsAuthorized(false);
+    }
+    
+    setIsChecking(false);
+  }, []);
+
+  if (isChecking) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        background: '#0B1014',
+        color: '#FFCC80'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <Sparkles size={48} style={{ marginBottom: '16px' }} />
+          <p>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthorized) {
+    return <DownloadAppScreen />;
+  }
+
   const [appState, setAppState] = useStoredState();
   const [activeTab, setActiveTab] = useState(() => window.location.hash.replace('#', '') || 'home');
   const [quoteIndex, setQuoteIndex] = useState(0);
@@ -516,12 +640,12 @@ function App() {
 
   return (
     <main className="app-shell">
-      <section className="phone-frame" aria-label="Quittr India app">
+      <section className="phone-frame" aria-label="Reclaim app">
         <div className="content-scroll">
           <header className="topbar">
             <div>
-              <p className="eyebrow">Quittr India</p>
-              <h1>Premanand Ji Recovery Path</h1>
+              <p className="eyebrow">Guruji's Recovery Path</p>
+              <h1>Reclaim</h1>
             </div>
             <button className="icon-button" aria-label="Open protection settings" onClick={() => setShowSettings(true)}>
               <Lock size={19} />
@@ -681,7 +805,7 @@ function App() {
 function AppFrame({ children }) {
   return (
     <main className="app-shell">
-      <section className="phone-frame" aria-label="Quittr India app">
+      <section className="phone-frame" aria-label="Reclaim app">
         <div className="content-scroll no-nav">{children}</div>
       </section>
     </main>
@@ -1413,7 +1537,7 @@ function AiPanel({ messages, onSend, onStartSos, onPledge, onMeditate }) {
           </div>
           <Bot size={22} />
         </div>
-        <p className="panel-copy">A recovery coach inspired by Premanand ji's centered path. Get immediate help with urges, guilt, and daily discipline.</p>
+        <p className="panel-copy">A recovery coach inspired by Guruji's centered path. Get immediate help with urges, guilt, and daily discipline.</p>
 
         <div className="ai-quick-actions">
           <button onClick={onPledge}>
@@ -1947,8 +2071,8 @@ function MorePanel({
       </section>
 
       <div className="app-info">
-        <p className="app-version">Quittr India · Version 1.0</p>
-        <p className="app-tagline">Built with devotion for your recovery journey</p>
+        <p className="app-version">Reclaim · Version 1.0</p>
+        <p className="app-tagline">Guruji's path to freedom and recovery</p>
       </div>
     </>
   );
