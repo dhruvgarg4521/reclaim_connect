@@ -365,7 +365,7 @@ function ReclaimApp() {
     let unsub = () => {};
     let cancelled = false;
 
-    (async () => {
+    const finishOAuthRedirect = async () => {
       try {
         const redirectUser = await completeRedirectSignIn();
         if (cancelled) return;
@@ -376,32 +376,49 @@ function ReclaimApp() {
             signedIn: true,
             authUser: redirectUser,
           }));
+          setAuthError('');
         }
       } catch (error) {
         if (!cancelled) {
           setAuthError(getAuthErrorMessage(error));
         }
-      }
-
-      if (isFirebaseConfigured) {
-        unsub = subscribeToAuthChanges((authUser) => {
-          if (cancelled) return;
-
-          setAppState((current) => ({
-            ...current,
-            signedIn: Boolean(authUser),
-            authUser,
-          }));
+      } finally {
+        if (!cancelled && !isFirebaseConfigured) {
           setAuthBootstrapping(false);
-        });
-      } else {
-        setAuthBootstrapping(false);
+        }
       }
-    })();
+    };
+
+    window.__reclaimHandleOAuthReturn = (returnUrl) => {
+      if (!returnUrl || cancelled) return;
+      const hashIndex = returnUrl.indexOf('#');
+      if (hashIndex === -1) return;
+      const hash = returnUrl.slice(hashIndex);
+      window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}${hash}`);
+      finishOAuthRedirect();
+    };
+
+    finishOAuthRedirect();
+    window.addEventListener('hashchange', finishOAuthRedirect);
+
+    if (isFirebaseConfigured) {
+      unsub = subscribeToAuthChanges((authUser) => {
+        if (cancelled) return;
+
+        setAppState((current) => ({
+          ...current,
+          signedIn: Boolean(authUser),
+          authUser,
+        }));
+        setAuthBootstrapping(false);
+      });
+    }
 
     return () => {
       cancelled = true;
       unsub();
+      window.removeEventListener('hashchange', finishOAuthRedirect);
+      delete window.__reclaimHandleOAuthReturn;
     };
   }, []);
 

@@ -38,6 +38,9 @@
         "projectId": "b58fb05b-1776-47a3-b72f-c6bfbe32eade"
       }
     },
-    "owner": "fghjklkjhg"
+    "owner": "fghjklkjhg",
+    "plugins": [
+      "expo-web-browser"
+    ]
   }
 }

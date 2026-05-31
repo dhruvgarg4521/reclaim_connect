@@ -103,7 +103,21 @@ function signInWithGoogleGisRedirect(clientId) {
   authUrl.searchParams.set('scope', 'openid email profile');
   authUrl.searchParams.set('include_granted_scopes', 'true');
   authUrl.searchParams.set('prompt', 'select_account');
-  window.location.assign(authUrl.toString());
+
+  const authUrlString = authUrl.toString();
+
+  if (window.ReactNativeWebView?.postMessage) {
+    window.ReactNativeWebView.postMessage(
+      JSON.stringify({
+        type: 'GOOGLE_OAUTH_START',
+        authUrl: authUrlString,
+        redirectUri,
+      }),
+    );
+    return;
+  }
+
+  window.location.assign(authUrlString);
 }
 
 async function signInWithGoogleGisPopup(clientId) {
