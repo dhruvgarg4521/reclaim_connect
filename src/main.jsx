@@ -34,6 +34,8 @@ import './styles.css';
 const STORAGE_KEY = 'reclaim-india-state-v1';
 const APP_SECRET = 'reclaim_app_2024_secure'; // Change this to your own secret
 const AUTH_KEY = 'reclaim-app-authorized';
+// Set to true before production to block web access without the mobile app token
+const REQUIRE_APP_SECRET = false;
 const rescueSeconds = 90;
 
 const quotes = [
@@ -204,6 +206,10 @@ function DownloadAppScreen() {
 
 
 function App() {
+  if (!REQUIRE_APP_SECRET) {
+    return <ReclaimApp />;
+  }
+
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
 
