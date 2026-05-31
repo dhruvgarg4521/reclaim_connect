@@ -28,7 +28,13 @@ import {
   UserRound,
   Waves,
 } from 'lucide-react';
-import { appConfig } from './config';
+import { appConfig, isFirebaseConfigured, isGoogleSignInReady } from './config';
+import {
+  completeGoogleRedirectSignIn,
+  firebaseSignOut,
+  signInWithGoogle as firebaseGoogleSignIn,
+  subscribeToAuthChanges,
+} from './firebase';
 import './styles.css';
 
 const STORAGE_KEY = 'reclaim-india-state-v1';
@@ -109,8 +115,8 @@ const starterMessages = [
 ];
 
 const defaultState = {
+  welcomeComplete: false,
   onboardingComplete: false,
-  savingsSetupComplete: false,
   addictionScore: 0,
   addictionLevel: '',
   subscription: null,
@@ -205,6 +211,80 @@ function DownloadAppScreen() {
 
 
 
+function IntroBrandHeader({ tagline, compact = false }) {
+  return (
+    <>
+      <div className={`intro-brand__icon${compact ? ' intro-brand__icon--compact' : ''}`}>
+        <img src="/reclaim-logo.png" alt="" />
+      </div>
+      <h1 className="intro-brand__name">RECLAIM</h1>
+      <div className="intro-brand__divider" aria-hidden="true">
+        <span />
+        <i />
+        <span />
+      </div>
+      {tagline ? <p className="intro-brand__tagline">{tagline}</p> : null}
+      <div className="intro-brand__badge">
+        INDIA <span aria-hidden="true">🇮🇳</span>
+      </div>
+    </>
+  );
+}
+
+function LaunchSplash() {
+  return (
+    <AppFrame>
+      <div className="intro-screen">
+        <div className="intro-brand">
+          <IntroBrandHeader tagline="Break Free. Live Fully." />
+        </div>
+        <div className="intro-loader" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+      </div>
+    </AppFrame>
+  );
+}
+
+function AboutScreen({ onContinue }) {
+  const features = [
+    { icon: ShieldCheck, text: '90-second SOS reset when urges hit' },
+    { icon: TrendingUp, text: 'Track your streak, clarity and progress' },
+    { icon: IndianRupee, text: 'See money and time you reclaim' },
+    { icon: HeartHandshake, text: 'Daily wisdom and AI guidance from Guruji' },
+  ];
+
+  return (
+    <AppFrame>
+      <div className="intro-screen intro-screen--compact">
+        <div className="intro-brand">
+          <IntroBrandHeader compact />
+          <p className="intro-brand__lead">
+            Your private companion to quit the habit holding you back.
+          </p>
+          <ul className="intro-brand__features">
+            {features.map(({ icon: Icon, text }) => (
+              <li key={text}>
+                <Icon size={16} />
+                <span>{text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="intro-footer">
+          <button type="button" className="primary-action wide intro-footer__button" onClick={onContinue}>
+            Get Started
+            <ChevronRight size={20} />
+          </button>
+          <p className="intro-footer__note">Private. Your data stays on your device.</p>
+        </div>
+      </div>
+    </AppFrame>
+  );
+}
+
 function App() {
   if (!REQUIRE_APP_SECRET) {
     return <ReclaimApp />;
@@ -267,6 +347,60 @@ function ReclaimApp() {
   const [journalDraft, setJournalDraft] = useState({ mood: 'Steady', trigger: '', note: '' });
   const [showPledgeModal, setShowPledgeModal] = useState(false);
   const [activeStatModal, setActiveStatModal] = useState(null);
+  const [showSplash, setShowSplash] = useState(true);
+  const [authBootstrapping, setAuthBootstrapping] = useState(isFirebaseConfigured);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState('');
+
+  useEffect(() => {
+    if (!isFirebaseConfigured) {
+      setAuthBootstrapping(false);
+      return undefined;
+    }
+
+    let unsub = () => {};
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const redirectUser = await completeGoogleRedirectSignIn();
+        if (cancelled) return;
+
+        if (redirectUser) {
+          setAppState((current) => ({
+            ...current,
+            signedIn: true,
+            authUser: redirectUser,
+          }));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAuthError(getAuthErrorMessage(error));
+        }
+      }
+
+      unsub = subscribeToAuthChanges((authUser) => {
+        if (cancelled) return;
+
+        setAppState((current) => ({
+          ...current,
+          signedIn: Boolean(authUser),
+          authUser,
+        }));
+        setAuthBootstrapping(false);
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShowSplash(false), 2400);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const onHashChange = () => setActiveTab(window.location.hash.replace('#', '') || 'home');
@@ -491,21 +625,36 @@ function ReclaimApp() {
     notify('App reset. Start the journey again.');
   }
 
-  function loginWithGoogle() {
-    updateState((current) => ({
-      ...current,
-      signedIn: true,
-      authUser: {
-        name: 'Dhruv',
-        email: 'dhruv@example.com',
-        provider: appConfig.googleOauthProvider,
-        signedInAt: new Date().toISOString(),
-      },
-    }));
-    notify('Logged in with Google.');
+  async function loginWithGoogle() {
+    setAuthError('');
+    setAuthBusy(true);
+
+    try {
+      const authUser = await firebaseGoogleSignIn();
+      if (authUser) {
+        updateState((current) => ({
+          ...current,
+          signedIn: true,
+          authUser,
+        }));
+        notify('Logged in with Google.');
+      }
+    } catch (error) {
+      const message = getAuthErrorMessage(error);
+      setAuthError(message);
+      notify(message);
+    } finally {
+      setAuthBusy(false);
+    }
   }
 
-  function logout() {
+  async function logout() {
+    try {
+      await firebaseSignOut();
+    } catch (error) {
+      console.error(error);
+    }
+
     updateState((current) => ({
       ...current,
       signedIn: false,
@@ -556,6 +705,20 @@ function ReclaimApp() {
     { icon: ShieldCheck, label: 'Relapses', value: String(appState.relapses.length), tone: 'rose' },
   ];
 
+  if (showSplash) {
+    return <LaunchSplash />;
+  }
+
+  if (!appState.welcomeComplete) {
+    return (
+      <AboutScreen
+        onContinue={() =>
+          updateState((current) => ({ ...current, welcomeComplete: true }))
+        }
+      />
+    );
+  }
+
   if (!appState.onboardingComplete) {
     return (
       <AppFrame>
@@ -574,26 +737,16 @@ function ReclaimApp() {
     );
   }
 
-  if (!appState.savingsSetupComplete) {
-    return (
-      <AppFrame>
-        <SavingsSetupScreen
-          onComplete={(savingsData) =>
-            updateState((current) => ({
-              ...current,
-              savingsSetupComplete: true,
-              ...savingsData,
-            }))
-          }
-        />
-      </AppFrame>
-    );
-  }
-
   if (!appState.signedIn) {
     return (
       <AppFrame>
-        <SigninScreen onSignin={loginWithGoogle} />
+        <SigninScreen
+          onSignin={loginWithGoogle}
+          isBusy={authBusy}
+          error={authError}
+          isBootstrapping={authBootstrapping}
+          isConfigured={isGoogleSignInReady}
+        />
       </AppFrame>
     );
   }
@@ -814,162 +967,6 @@ function AppFrame({ children }) {
         <div className="content-scroll no-nav">{children}</div>
       </section>
     </main>
-  );
-}
-
-function SavingsSetupScreen({ onComplete }) {
-  const [formData, setFormData] = useState({
-    quitDate: new Date().toISOString().slice(0, 10),
-    dailyCost: '',
-    savingFor: '',
-    productLink: '',
-    productPrice: '',
-  });
-  const [showCalculation, setShowCalculation] = useState(false);
-
-  const daysToGoal = formData.dailyCost && formData.productPrice
-    ? Math.ceil(Number(formData.productPrice) / Number(formData.dailyCost))
-    : 0;
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!formData.savingFor) {
-      return;
-    }
-    onComplete({
-      quitDate: new Date(`${formData.quitDate}T00:00:00`).toISOString(),
-      dailyCost: formData.dailyCost ? Number(formData.dailyCost) : 0,
-      savingFor: formData.savingFor.trim(),
-      productLink: formData.productLink.trim(),
-      productPrice: formData.productPrice ? Number(formData.productPrice) : 0,
-    });
-  };
-
-  const updateField = (field, value) => {
-    setFormData({ ...formData, [field]: value });
-    if (field === 'productPrice' && value && formData.dailyCost) {
-      setShowCalculation(true);
-    }
-  };
-
-  return (
-    <section className="journey-screen savings-setup-screen">
-      <div className="setup-hero">
-        <div className="setup-icon">
-          <IndianRupee size={36} />
-        </div>
-        <p className="eyebrow">Financial Recovery Setup</p>
-        <h1>Track Your Savings</h1>
-        <p className="panel-copy">
-          Let's calculate how much you'll save by quitting and set a meaningful goal to work toward.
-        </p>
-      </div>
-
-      <form className="savings-form" onSubmit={handleSubmit}>
-        <div className="form-section">
-          <h3>Recovery Timeline</h3>
-          <label>
-            <span>Quit Start Date</span>
-            <input
-              type="date"
-              value={formData.quitDate}
-              onChange={(e) => updateField('quitDate', e.target.value)}
-              max={new Date().toISOString().slice(0, 10)}
-              required
-            />
-          </label>
-
-          <label>
-            <span>Daily Cost (₹) - Optional</span>
-            <input
-              type="number"
-              placeholder="e.g., 200"
-              value={formData.dailyCost}
-              onChange={(e) => updateField('dailyCost', e.target.value)}
-              min="1"
-              step="1"
-            />
-            <small>How much did you spend daily on this habit?</small>
-          </label>
-        </div>
-
-        <div className="form-section">
-          <h3>Savings Goal</h3>
-          <label>
-            <span>What are you saving for?</span>
-            <input
-              type="text"
-              placeholder="e.g., New bike, Course fees, Family trip"
-              value={formData.savingFor}
-              onChange={(e) => updateField('savingFor', e.target.value)}
-              maxLength="50"
-              required
-            />
-          </label>
-
-          <label>
-            <span>Product Link (Optional)</span>
-            <input
-              type="url"
-              placeholder="https://example.com/product"
-              value={formData.productLink}
-              onChange={(e) => updateField('productLink', e.target.value)}
-            />
-            <small>Paste a link to the item you want to buy</small>
-          </label>
-
-          <label>
-            <span>Product Price (Optional)</span>
-            <input
-              type="number"
-              placeholder="e.g., 15000"
-              value={formData.productPrice}
-              onChange={(e) => updateField('productPrice', e.target.value)}
-              min="1"
-              step="1"
-            />
-            <small>We'll calculate days needed to achieve this goal</small>
-          </label>
-        </div>
-
-        {showCalculation && daysToGoal > 0 && (
-          <div className="goal-calculation">
-            <div className="calculation-icon">
-              <Target size={28} />
-            </div>
-            <div className="calculation-content">
-              <strong>Your Goal Timeline</strong>
-              <div className="calculation-stats">
-                <div className="calc-stat">
-                  <span className="stat-value">{daysToGoal}</span>
-                  <span className="stat-label">Days to goal</span>
-                </div>
-                <div className="calc-divider">→</div>
-                <div className="calc-stat">
-                  <span className="stat-value">₹{formData.productPrice}</span>
-                  <span className="stat-label">Target amount</span>
-                </div>
-              </div>
-              <p className="calculation-message">
-                By staying clean, you'll save ₹{formData.dailyCost} daily. In {daysToGoal} days, you'll have enough for "{formData.savingFor}"!
-              </p>
-            </div>
-          </div>
-        )}
-
-        <div className="setup-actions">
-          <button type="submit" className="primary-action wide">
-            <BadgeCheck size={18} />
-            Complete Setup
-          </button>
-        </div>
-      </form>
-
-      <div className="setup-note">
-        <Lock size={16} />
-        <p>You can update these details anytime from Settings</p>
-      </div>
-    </section>
   );
 }
 
@@ -1317,8 +1314,47 @@ function PaywallScreen({ level, score, onChoose }) {
   );
 }
 
-function SigninScreen({ onSignin }) {
-  const providerLabel = appConfig.googleOauthProvider === 'firebase' ? 'Firebase Auth' : 'Google Identity Services';
+function getAuthErrorMessage(error) {
+  const code = error?.code || '';
+  const message = `${error?.message || ''} ${error?.error || ''}`.toLowerCase();
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+
+  if (code === 'auth/popup-closed-by-user') return 'Sign-in was cancelled.';
+  if (code === 'auth/popup-blocked') {
+    return 'Pop-up blocked. Allow pop-ups for this site or open the app on your phone.';
+  }
+  if (code === 'auth/unauthorized-domain') {
+    return `This domain is not authorized. Add ${origin} in Firebase → Authentication → Settings → Authorized domains.`;
+  }
+  if (code === 'auth/operation-not-allowed') {
+    return 'Google sign-in is disabled in Firebase. Enable it under Authentication → Sign-in method.';
+  }
+  if (
+    message.includes('invalid_client') ||
+    message.includes('no registered origin') ||
+    message.includes('origin_mismatch')
+  ) {
+    return `Google blocked this site. In Google Cloud Console → Credentials → Web OAuth client → Authorized JavaScript origins, add exactly: ${origin} — then Save and wait a few minutes.`;
+  }
+
+  return error?.message || error?.error || 'Google sign-in failed. Please try again.';
+}
+
+function SigninScreen({ onSignin, isBusy, error, isBootstrapping, isConfigured }) {
+  const setupOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+
+  if (isBootstrapping) {
+    return (
+      <section className="journey-screen center-screen">
+        <div className="portrait-mark large">
+          <Sparkles size={34} />
+        </div>
+        <p className="eyebrow">Secure your progress</p>
+        <h1>Sign in to continue</h1>
+        <p className="panel-copy">Checking your Google sign-in status…</p>
+      </section>
+    );
+  }
 
   return (
     <section className="journey-screen center-screen">
@@ -1327,12 +1363,25 @@ function SigninScreen({ onSignin }) {
       </div>
       <p className="eyebrow">Secure your progress</p>
       <h1>Sign in to continue</h1>
-      <p className="panel-copy">Google login is required before payment. Provider target: {providerLabel}.</p>
-      <div className="auth-status">
-        <UserRound size={18} />
-        <span>{appConfig.googleOauthClientId ? 'OAuth client configured' : 'OAuth client placeholder set in env'}</span>
-      </div>
-      <button className="google-button" onClick={onSignin}>Continue with Google</button>
+      <p className="panel-copy">
+        Sign in with Google to save your progress and continue to payment.
+      </p>
+      {!isConfigured ? (
+        <div className="auth-error">
+          Google sign-in is not configured. Add <code>VITE_GOOGLE_OAUTH_CLIENT_ID</code> to{' '}
+          <code>.env.local</code>, then restart <code>npm run dev</code>.
+        </div>
+      ) : null}
+      {error ? <div className="auth-error">{error}</div> : null}
+      {import.meta.env.DEV && isConfigured ? (
+        <div className="auth-setup-hint">
+          <p>Add this origin in Google Cloud → Credentials → Web client → Authorized JavaScript origins:</p>
+          <code>{setupOrigin}</code>
+        </div>
+      ) : null}
+      <button className="google-button" type="button" onClick={onSignin} disabled={isBusy || !isConfigured}>
+        {isBusy ? 'Signing in…' : 'Continue with Google'}
+      </button>
     </section>
   );
 }
