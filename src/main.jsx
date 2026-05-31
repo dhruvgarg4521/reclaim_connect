@@ -145,7 +145,7 @@ function DownloadAppScreen() {
       <div className="download-container">
         <div className="download-header">
           <div className="app-logo">
-            <Sparkles size={48} />
+            <img src="/reclaim-logo.png" alt="Reclaim" />
           </div>
           <h1>Reclaim</h1>
           <p className="app-tagline">Guruji's path to freedom and recovery</p>
@@ -216,16 +216,19 @@ function DownloadAppScreen() {
 function IntroBrandHeader({ tagline, compact = false }) {
   return (
     <>
-      <div className={`intro-brand__icon${compact ? ' intro-brand__icon--compact' : ''}`}>
-        <img src="/reclaim-logo.png" alt="" />
+      <div className={`intro-brand__logo${compact ? ' intro-brand__logo--compact' : ''}`}>
+        <img src="/reclaim-logo.png" alt="Reclaim" />
       </div>
-      <h1 className="intro-brand__name">RECLAIM</h1>
-      <div className="intro-brand__divider" aria-hidden="true">
-        <span />
-        <i />
-        <span />
-      </div>
-      {tagline ? <p className="intro-brand__tagline">{tagline}</p> : null}
+      {tagline ? (
+        <>
+          <div className="intro-brand__divider" aria-hidden="true">
+            <span />
+            <i />
+            <span />
+          </div>
+          <p className="intro-brand__tagline">{tagline}</p>
+        </>
+      ) : null}
       <div className="intro-brand__badge">
         INDIA <span aria-hidden="true">🇮🇳</span>
       </div>

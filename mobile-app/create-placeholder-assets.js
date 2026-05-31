@@ -1,7 +1,8 @@
 /**
- * Placeholder PNG asset generator for EAS / Expo builds.
+ * PNG asset generator for EAS / Expo builds.
  *
  * Creates: icon.png, adaptive-icon.png, splash.png, favicon.png
+ * Uses public/reclaim-logo.png when available.
  *
  * Usage: npm run create-assets
  */
@@ -15,6 +16,7 @@ const ACCENT = '#4CAF50';
 const TEXT = '#FFFFFF';
 
 const assetsDir = path.join(__dirname, 'assets');
+const SOURCE_LOGO = path.join(__dirname, '..', 'public', 'reclaim-logo.png');
 
 function squareIconSvg(size, title, subtitle = '') {
   const titleSize = Math.round(size * 0.1);
@@ -54,21 +56,40 @@ async function writePngFromSvg(svg, width, height, filename) {
   console.log(`✅ ${filename} (${width}x${height}, ${(size / 1024).toFixed(1)} KB)`);
 }
 
+async function writePngFromLogo(width, height, filename, fit = 'contain') {
+  const outPath = path.join(assetsDir, filename);
+  await sharp(SOURCE_LOGO)
+    .resize(width, height, { fit, background: BG })
+    .png()
+    .toFile(outPath);
+
+  const { size } = fs.statSync(outPath);
+  console.log(`✅ ${filename} (${width}x${height}, ${(size / 1024).toFixed(1)} KB)`);
+}
+
 async function main() {
-  console.log('🎨 Creating placeholder PNG assets...\n');
+  console.log('🎨 Creating PNG assets...\n');
 
   if (!fs.existsSync(assetsDir)) {
     fs.mkdirSync(assetsDir, { recursive: true });
     console.log('✅ Created assets directory\n');
   }
 
-  await writePngFromSvg(squareIconSvg(1024, 'Reclaim'), 1024, 1024, 'icon.png');
-  await writePngFromSvg(squareIconSvg(1024, 'Reclaim'), 1024, 1024, 'adaptive-icon.png');
-  await writePngFromSvg(splashSvg(1284, 2778), 1284, 2778, 'splash.png');
-  await writePngFromSvg(squareIconSvg(48, 'R'), 48, 48, 'favicon.png');
+  if (fs.existsSync(SOURCE_LOGO)) {
+    console.log(`Using logo: ${SOURCE_LOGO}\n`);
+    await writePngFromLogo(1024, 1024, 'icon.png');
+    await writePngFromLogo(1024, 1024, 'adaptive-icon.png');
+    await writePngFromLogo(1284, 2778, 'splash.png', 'contain');
+    await writePngFromLogo(48, 48, 'favicon.png');
+  } else {
+    console.log('⚠️  public/reclaim-logo.png not found — using placeholder SVG assets\n');
+    await writePngFromSvg(squareIconSvg(1024, 'Reclaim'), 1024, 1024, 'icon.png');
+    await writePngFromSvg(squareIconSvg(1024, 'Reclaim'), 1024, 1024, 'adaptive-icon.png');
+    await writePngFromSvg(splashSvg(1284, 2778), 1284, 2778, 'splash.png');
+    await writePngFromSvg(squareIconSvg(48, 'R'), 48, 48, 'favicon.png');
+  }
 
-  console.log('\n✨ Done! PNG files are in mobile-app/assets/');
-  console.log('⚠️  Replace with final designs before Play Store release.\n');
+  console.log('\n✨ Done! PNG files are in mobile-app/assets/\n');
 }
 
 main().catch((error) => {
