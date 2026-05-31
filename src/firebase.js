@@ -55,10 +55,15 @@ function loadGoogleIdentityServices() {
 export function shouldUseGoogleRedirect() {
   const ua = navigator.userAgent || '';
   return (
+    window.__RECLAIM_WEBVIEW__ === true ||
     typeof window.ReactNativeWebView !== 'undefined' ||
     /;\swv\)/i.test(ua) ||
     /WebView/i.test(ua)
   );
+}
+
+export function getGoogleOAuthRedirectUri() {
+  return `${window.location.origin}/`;
 }
 
 function mapGoogleProfile(profile) {
@@ -72,7 +77,32 @@ function mapGoogleProfile(profile) {
   };
 }
 
-async function signInWithGoogleGis(clientId) {
+async function fetchGoogleProfile(accessToken) {
+  const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch Google profile');
+  }
+
+  const profile = await response.json();
+  return mapGoogleProfile(profile);
+}
+
+function signInWithGoogleGisRedirect(clientId) {
+  const redirectUri = getGoogleOAuthRedirectUri();
+  const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  authUrl.searchParams.set('client_id', clientId);
+  authUrl.searchParams.set('redirect_uri', redirectUri);
+  authUrl.searchParams.set('response_type', 'token');
+  authUrl.searchParams.set('scope', 'openid email profile');
+  authUrl.searchParams.set('include_granted_scopes', 'true');
+  authUrl.searchParams.set('prompt', 'select_account');
+  window.location.assign(authUrl.toString());
+}
+
+async function signInWithGoogleGisPopup(clientId) {
   await loadGoogleIdentityServices();
 
   return new Promise((resolve, reject) => {
@@ -86,16 +116,7 @@ async function signInWithGoogleGis(clientId) {
         }
 
         try {
-          const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-          });
-
-          if (!response.ok) {
-            throw new Error('Failed to fetch Google profile');
-          }
-
-          const profile = await response.json();
-          resolve(mapGoogleProfile(profile));
+          resolve(await fetchGoogleProfile(tokenResponse.access_token));
         } catch (error) {
           reject(error);
         }
@@ -104,6 +125,37 @@ async function signInWithGoogleGis(clientId) {
 
     client.requestAccessToken({ prompt: 'select_account' });
   });
+}
+
+async function signInWithGoogleGis(clientId) {
+  if (shouldUseGoogleRedirect()) {
+    signInWithGoogleGisRedirect(clientId);
+    return null;
+  }
+
+  return signInWithGoogleGisPopup(clientId);
+}
+
+export async function completeGisRedirectSignIn() {
+  const hash = window.location.hash.startsWith('#')
+    ? window.location.hash.slice(1)
+    : window.location.hash;
+  if (!hash) return null;
+
+  const params = new URLSearchParams(hash);
+  const accessToken = params.get('access_token');
+  const error = params.get('error');
+
+  if (!accessToken && !error) return null;
+
+  const cleanUrl = `${window.location.pathname}${window.location.search}`;
+  window.history.replaceState({}, document.title, cleanUrl);
+
+  if (error) {
+    throw new Error(params.get('error_description') || error);
+  }
+
+  return fetchGoogleProfile(accessToken);
 }
 
 async function signInWithFirebaseGoogle() {
@@ -139,6 +191,18 @@ export async function completeGoogleRedirectSignIn() {
 
   const result = await getRedirectResult(authInstance);
   return result?.user ? mapFirebaseUser(result.user) : null;
+}
+
+export async function completeRedirectSignIn() {
+  if (isFirebaseConfigured) {
+    return completeGoogleRedirectSignIn();
+  }
+
+  if (appConfig.googleOauthClientId) {
+    return completeGisRedirectSignIn();
+  }
+
+  return null;
 }
 
 export async function firebaseSignOut() {

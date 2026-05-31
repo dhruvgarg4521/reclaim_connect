@@ -30,8 +30,9 @@ import {
 } from 'lucide-react';
 import { appConfig, isFirebaseConfigured, isGoogleSignInReady } from './config';
 import {
-  completeGoogleRedirectSignIn,
+  completeRedirectSignIn,
   firebaseSignOut,
+  shouldUseGoogleRedirect,
   signInWithGoogle as firebaseGoogleSignIn,
   subscribeToAuthChanges,
 } from './firebase';
@@ -348,12 +349,14 @@ function ReclaimApp() {
   const [showPledgeModal, setShowPledgeModal] = useState(false);
   const [activeStatModal, setActiveStatModal] = useState(null);
   const [showSplash, setShowSplash] = useState(true);
-  const [authBootstrapping, setAuthBootstrapping] = useState(isFirebaseConfigured);
+  const [authBootstrapping, setAuthBootstrapping] = useState(
+    isFirebaseConfigured || Boolean(appConfig.googleOauthClientId),
+  );
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState('');
 
   useEffect(() => {
-    if (!isFirebaseConfigured) {
+    if (!isFirebaseConfigured && !appConfig.googleOauthClientId) {
       setAuthBootstrapping(false);
       return undefined;
     }
@@ -363,7 +366,7 @@ function ReclaimApp() {
 
     (async () => {
       try {
-        const redirectUser = await completeGoogleRedirectSignIn();
+        const redirectUser = await completeRedirectSignIn();
         if (cancelled) return;
 
         if (redirectUser) {
@@ -379,16 +382,20 @@ function ReclaimApp() {
         }
       }
 
-      unsub = subscribeToAuthChanges((authUser) => {
-        if (cancelled) return;
+      if (isFirebaseConfigured) {
+        unsub = subscribeToAuthChanges((authUser) => {
+          if (cancelled) return;
 
-        setAppState((current) => ({
-          ...current,
-          signedIn: Boolean(authUser),
-          authUser,
-        }));
+          setAppState((current) => ({
+            ...current,
+            signedIn: Boolean(authUser),
+            authUser,
+          }));
+          setAuthBootstrapping(false);
+        });
+      } else {
         setAuthBootstrapping(false);
-      });
+      }
     })();
 
     return () => {
@@ -1332,9 +1339,11 @@ function getAuthErrorMessage(error) {
   if (
     message.includes('invalid_client') ||
     message.includes('no registered origin') ||
-    message.includes('origin_mismatch')
+    message.includes('origin_mismatch') ||
+    message.includes('redirect_uri_mismatch')
   ) {
-    return `Google blocked this site. In Google Cloud Console → Credentials → Web OAuth client → Authorized JavaScript origins, add exactly: ${origin} — then Save and wait a few minutes.`;
+    const redirectUri = typeof window !== 'undefined' ? `${window.location.origin}/` : '';
+    return `Google blocked this site. In Google Cloud → Web OAuth client add Authorized JavaScript origin: ${origin} and Authorized redirect URI: ${redirectUri} — then Save and wait a few minutes.`;
   }
 
   return error?.message || error?.error || 'Google sign-in failed. Please try again.';
@@ -1375,8 +1384,12 @@ function SigninScreen({ onSignin, isBusy, error, isBootstrapping, isConfigured }
       {error ? <div className="auth-error">{error}</div> : null}
       {import.meta.env.DEV && isConfigured ? (
         <div className="auth-setup-hint">
-          <p>Add this origin in Google Cloud → Credentials → Web client → Authorized JavaScript origins:</p>
-          <code>{setupOrigin}</code>
+          <p>Google Cloud → Web OAuth client:</p>
+          <code>Origin: {setupOrigin}</code>
+          <code>Redirect URI: {setupOrigin}/</code>
+          {shouldUseGoogleRedirect() ? (
+            <p className="auth-setup-hint__note">WebView detected — sign-in uses full-page redirect (not popup).</p>
+          ) : null}
         </div>
       ) : null}
       <button className="google-button" type="button" onClick={onSignin} disabled={isBusy || !isConfigured}>

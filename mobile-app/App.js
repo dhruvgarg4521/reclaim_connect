@@ -1,6 +1,6 @@
 
 import React, { useEffect } from 'react';
-import { StyleSheet, SafeAreaView, StatusBar, BackHandler, Alert } from 'react-native';
+import { Platform, StyleSheet, SafeAreaView, StatusBar, BackHandler, Alert } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 /**
@@ -12,6 +12,11 @@ const APP_SECRET = 'reclaim_app_2024_secure';
 
 // TODO: Replace with your actual Vercel deployment URL (remove trailing slash!)
 const WEB_APP_URL = 'https://reclaim-connect.vercel.app';
+
+const WEBVIEW_BOOTSTRAP_SCRIPT = `
+  window.__RECLAIM_WEBVIEW__ = true;
+  true;
+`;
 
 export default function App() {
   const webViewRef = React.useRef(null);
@@ -62,11 +67,20 @@ export default function App() {
         javaScriptEnabled={true}
         domStorageEnabled={true}
         cacheEnabled={true}
+        sharedCookiesEnabled={true}
+        thirdPartyCookiesEnabled={true}
+        setSupportMultipleWindows={false}
+        javaScriptCanOpenWindowsAutomatically={true}
+        injectedJavaScriptBeforeContentLoaded={WEBVIEW_BOOTSTRAP_SCRIPT}
         allowsBackForwardNavigationGestures={true}
-        // Android specific
+        originWhitelist={['https://*', 'http://*']}
         mixedContentMode="always"
-        // iOS specific
         bounces={false}
+        {...Platform.select({
+          android: {
+            nestedScrollEnabled: true,
+          },
+        })}
       />
     </SafeAreaView>
   );
