@@ -32,6 +32,7 @@ import { appConfig, isFirebaseConfigured, isGoogleSignInReady } from './config';
 import {
   completeRedirectSignIn,
   firebaseSignOut,
+  getGoogleOAuthRedirectUri,
   shouldUseGoogleRedirect,
   signInWithGoogle as firebaseGoogleSignIn,
   subscribeToAuthChanges,
@@ -1342,8 +1343,8 @@ function getAuthErrorMessage(error) {
     message.includes('origin_mismatch') ||
     message.includes('redirect_uri_mismatch')
   ) {
-    const redirectUri = typeof window !== 'undefined' ? `${window.location.origin}/` : '';
-    return `Google blocked this site. In Google Cloud → Web OAuth client add Authorized JavaScript origin: ${origin} and Authorized redirect URI: ${redirectUri} — then Save and wait a few minutes.`;
+    const redirectUri = typeof window !== 'undefined' ? getGoogleOAuthRedirectUri() : '';
+    return `Google redirect URI mismatch. In Google Cloud → Web OAuth client → Authorized redirect URIs, add exactly: ${redirectUri} — also add JavaScript origin: ${origin}. Save and wait a few minutes, then redeploy Vercel if you changed env vars.`;
   }
 
   return error?.message || error?.error || 'Google sign-in failed. Please try again.';
@@ -1351,6 +1352,7 @@ function getAuthErrorMessage(error) {
 
 function SigninScreen({ onSignin, isBusy, error, isBootstrapping, isConfigured }) {
   const setupOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const redirectUri = typeof window !== 'undefined' ? getGoogleOAuthRedirectUri() : '';
 
   if (isBootstrapping) {
     return (
@@ -1386,7 +1388,7 @@ function SigninScreen({ onSignin, isBusy, error, isBootstrapping, isConfigured }
         <div className="auth-setup-hint">
           <p>Google Cloud → Web OAuth client:</p>
           <code>Origin: {setupOrigin}</code>
-          <code>Redirect URI: {setupOrigin}/</code>
+          <code>Redirect URI: {redirectUri}</code>
           {shouldUseGoogleRedirect() ? (
             <p className="auth-setup-hint__note">WebView detected — sign-in uses full-page redirect (not popup).</p>
           ) : null}

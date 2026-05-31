@@ -63,7 +63,11 @@ export function shouldUseGoogleRedirect() {
 }
 
 export function getGoogleOAuthRedirectUri() {
-  return `${window.location.origin}/`;
+  const configured = appConfig.googleOauthRedirectUri.trim();
+  if (configured) return configured;
+
+  // Must match Google Cloud "Authorized redirect URIs" exactly (no trailing slash).
+  return window.location.origin;
 }
 
 function mapGoogleProfile(profile) {
