@@ -17,14 +17,39 @@
         text-align: center;
       }
       p { margin: 0; opacity: 0.85; }
+      a {
+        margin-top: 16px;
+        color: #ffcc80;
+        font-weight: 700;
+        text-decoration: none;
+      }
     </style>
   </head>
   <body>
-    <p>Signing you in… Return to the Reclaim app.</p>
+    <p>Signing you in…</p>
+    <a id="return-link" href="#">Return to the Reclaim app</a>
     <script>
-      if (window.opener) {
-        try { window.close(); } catch (e) {}
-      }
+      (function () {
+        // Google redirects here with #access_token=... in the URL fragment.
+        var payload = window.location.hash || '';
+        if (!payload && window.location.search) {
+          payload = '#' + window.location.search.slice(1);
+        }
+
+        // Hand the tokens back to the native app via its custom scheme.
+        var appTarget = 'com.reclaim.app://oauth' + payload;
+        document.getElementById('return-link').setAttribute('href', appTarget);
+
+        // If this page is rendered inside the app WebView, post the result up.
+        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+          window.ReactNativeWebView.postMessage(
+            JSON.stringify({ type: 'GOOGLE_OAUTH_RESULT', hash: payload })
+          );
+        }
+
+        // Bounce to the app. The OS intercepts the custom scheme and closes the browser.
+        window.location.replace(appTarget);
+      })();
     </script>
   </body>
 </html>

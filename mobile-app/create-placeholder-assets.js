@@ -1,8 +1,11 @@
 /**
- * PNG asset generator for EAS / Expo builds.
+ * App icon / asset generator for EAS / Expo builds.
+ *
+ * Source: assets/logo-source.png (logo on black background).
+ * The black background is trimmed and the rounded-square corners are made
+ * transparent, so launcher icons show the white logo with NO black box.
  *
  * Creates: icon.png, adaptive-icon.png, splash.png, favicon.png
- * Uses public/reclaim-logo.png when available.
  *
  * Usage: npm run create-assets
  */
@@ -11,85 +14,107 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 
-const BG = '#0B1014';
-const ACCENT = '#4CAF50';
-const TEXT = '#FFFFFF';
-
 const assetsDir = path.join(__dirname, 'assets');
-const SOURCE_LOGO = path.join(__dirname, '..', 'public', 'reclaim-logo.png');
+const SOURCE = path.join(assetsDir, 'logo-source.png');
+const FALLBACK_SOURCE = path.join(__dirname, '..', 'public', 'reclaim-logo.png');
 
-function squareIconSvg(size, title, subtitle = '') {
-  const titleSize = Math.round(size * 0.1);
-  const subSize = Math.round(size * 0.045);
-  const subY = subtitle ? '54%' : '50%';
-  const subBlock = subtitle
-    ? `<text x="50%" y="${subY}" font-family="Arial, Helvetica, sans-serif" font-size="${subSize}"
-        fill="${TEXT}" text-anchor="middle" dominant-baseline="middle" opacity="0.75">${subtitle}</text>`
-    : '';
+const ICON_BG = { r: 255, g: 255, b: 255, alpha: 1 };
+const SPLASH_BG = { r: 11, g: 16, b: 20, alpha: 1 };
+const TRANSPARENT = { r: 0, g: 0, b: 0, alpha: 0 };
 
-  return `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-  <rect width="${size}" height="${size}" fill="${BG}"/>
-  <text x="50%" y="50%" font-family="Arial, Helvetica, sans-serif" font-size="${titleSize}"
-        fill="${ACCENT}" text-anchor="middle" dominant-baseline="middle" font-weight="bold">${title}</text>
-  ${subBlock}
-</svg>`;
+function roundedMaskSvg(size, radius) {
+  return Buffer.from(
+    `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">` +
+      `<rect x="0" y="0" width="${size}" height="${size}" rx="${radius}" ry="${radius}" fill="#fff"/>` +
+      `</svg>`,
+  );
 }
 
-function splashSvg(width, height) {
-  return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-  <rect width="${width}" height="${height}" fill="${BG}"/>
-  <text x="50%" y="48%" font-family="Arial, Helvetica, sans-serif" font-size="120"
-        fill="${ACCENT}" text-anchor="middle" dominant-baseline="middle" font-weight="bold">Reclaim</text>
-  <text x="50%" y="54%" font-family="Arial, Helvetica, sans-serif" font-size="56"
-        fill="${TEXT}" text-anchor="middle" dominant-baseline="middle" opacity="0.75">Path to Freedom</text>
-</svg>`;
+function resolveSource() {
+  if (fs.existsSync(SOURCE)) return SOURCE;
+  if (fs.existsSync(FALLBACK_SOURCE)) return FALLBACK_SOURCE;
+  return null;
 }
 
-async function writePngFromSvg(svg, width, height, filename) {
+/**
+ * Trim the black border off the source logo and round the corners to
+ * transparent so no black squircle edges remain. Returns a square PNG buffer.
+ */
+async function getCleanLogo(size) {
+  const src = resolveSource();
+  if (!src) throw new Error('No logo source found (assets/logo-source.png).');
+
+  // Work at higher resolution, then trim the solid black border.
+  const work = Math.max(size, 1024);
+  const trimmed = await sharp(src)
+    .trim({ background: '#000000', threshold: 45 })
+    .resize(work, work, { fit: 'contain', background: TRANSPARENT })
+    .png()
+    .toBuffer();
+
+  // The trimmed box still includes the soft dark drop-shadow halo around the
+  // white squircle. Crop inward past the halo so only the white logo remains.
+  const inset = Math.round(work * 0.085);
+  const cropped = await sharp(trimmed)
+    .extract({ left: inset, top: inset, width: work - inset * 2, height: work - inset * 2 })
+    .resize(size, size, { fit: 'fill' })
+    .png()
+    .toBuffer();
+
+  // Round corners to match the squircle so any residual edge is cut to transparent.
+  const radius = Math.round(size * 0.2);
+  return sharp(cropped)
+    .composite([{ input: roundedMaskSvg(size, radius), blend: 'dest-in' }])
+    .png()
+    .toBuffer();
+}
+
+async function composeOnCanvas(logoBuffer, canvasW, canvasH, background, filename) {
   const outPath = path.join(assetsDir, filename);
-  await sharp(Buffer.from(svg))
-    .resize(width, height)
+  await sharp({
+    create: {
+      width: canvasW,
+      height: canvasH,
+      channels: 4,
+      background,
+    },
+  })
+    .composite([{ input: logoBuffer, gravity: 'center' }])
     .png()
     .toFile(outPath);
 
   const { size } = fs.statSync(outPath);
-  console.log(`✅ ${filename} (${width}x${height}, ${(size / 1024).toFixed(1)} KB)`);
-}
-
-async function writePngFromLogo(width, height, filename, fit = 'contain') {
-  const outPath = path.join(assetsDir, filename);
-  await sharp(SOURCE_LOGO)
-    .resize(width, height, { fit, background: BG })
-    .png()
-    .toFile(outPath);
-
-  const { size } = fs.statSync(outPath);
-  console.log(`✅ ${filename} (${width}x${height}, ${(size / 1024).toFixed(1)} KB)`);
+  console.log(`✅ ${filename} (${canvasW}x${canvasH}, ${(size / 1024).toFixed(1)} KB)`);
 }
 
 async function main() {
-  console.log('🎨 Creating PNG assets...\n');
+  console.log('🎨 Generating app icons from logo-source.png...\n');
 
   if (!fs.existsSync(assetsDir)) {
     fs.mkdirSync(assetsDir, { recursive: true });
-    console.log('✅ Created assets directory\n');
   }
 
-  if (fs.existsSync(SOURCE_LOGO)) {
-    console.log(`Using logo: ${SOURCE_LOGO}\n`);
-    await writePngFromLogo(1024, 1024, 'icon.png');
-    await writePngFromLogo(1024, 1024, 'adaptive-icon.png');
-    await writePngFromLogo(1284, 2778, 'splash.png', 'contain');
-    await writePngFromLogo(48, 48, 'favicon.png');
-  } else {
-    console.log('⚠️  public/reclaim-logo.png not found — using placeholder SVG assets\n');
-    await writePngFromSvg(squareIconSvg(1024, 'Reclaim'), 1024, 1024, 'icon.png');
-    await writePngFromSvg(squareIconSvg(1024, 'Reclaim'), 1024, 1024, 'adaptive-icon.png');
-    await writePngFromSvg(splashSvg(1284, 2778), 1284, 2778, 'splash.png');
-    await writePngFromSvg(squareIconSvg(48, 'R'), 48, 48, 'favicon.png');
-  }
+  // iOS / main icon: white background, logo fills most of the square.
+  const iconLogo = await composeReady(1004);
+  await composeOnCanvas(iconLogo, 1024, 1024, ICON_BG, 'icon.png');
 
-  console.log('\n✨ Done! PNG files are in mobile-app/assets/\n');
+  // Android adaptive foreground: transparent bg, logo in the safe zone (~70%).
+  const adaptiveLogo = await composeReady(720);
+  await composeOnCanvas(adaptiveLogo, 1024, 1024, TRANSPARENT, 'adaptive-icon.png');
+
+  // Splash: logo centered on the dark brand background.
+  const splashLogo = await composeReady(760);
+  await composeOnCanvas(splashLogo, 1284, 2778, SPLASH_BG, 'splash.png');
+
+  // Favicon
+  const favLogo = await composeReady(46);
+  await composeOnCanvas(favLogo, 48, 48, ICON_BG, 'favicon.png');
+
+  console.log('\n✨ Done! Icons written to mobile-app/assets/\n');
+}
+
+async function composeReady(size) {
+  return getCleanLogo(size);
 }
 
 main().catch((error) => {

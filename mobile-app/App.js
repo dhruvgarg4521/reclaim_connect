@@ -9,8 +9,11 @@ const APP_SECRET = 'reclaim_app_2024_secure';
 const GOOGLE_CLIENT_ID =
   '369715680831-9i7v8fjnk9gqckm272k29rk73n45gf60.apps.googleusercontent.com';
 
-// Dedicated callback page — NOT the main SPA. Register in Google Cloud redirect URIs.
+// Sent to Google (https only — registered in Google Cloud redirect URIs).
 const GOOGLE_REDIRECT_URI = 'https://reclaim-connect.vercel.app/oauth-callback.html';
+
+// The callback page bounces to this custom scheme so the OS can return to the app.
+const APP_RETURN_URL = 'com.reclaim.app://oauth';
 
 const WEB_APP_URL = 'https://reclaim-connect.vercel.app';
 
@@ -29,8 +32,12 @@ function isGoogleOAuthUrl(url) {
   );
 }
 
-function isOAuthCallbackUrl(url) {
-  return url.includes('/oauth-callback.html') && url.includes('access_token=');
+function hasOAuthToken(url) {
+  return (
+    typeof url === 'string' &&
+    (url.startsWith(APP_RETURN_URL) || url.includes('/oauth-callback.html')) &&
+    (url.includes('access_token=') || url.includes('error='))
+  );
 }
 
 function buildGoogleAuthUrl(clientId) {
@@ -69,31 +76,18 @@ export default function App() {
       oauthInFlight.current = true;
 
       try {
-        await WebBrowser.coolDownAsync();
         const authUrl = buildGoogleAuthUrl(clientId || GOOGLE_CLIENT_ID);
 
-        const result = await WebBrowser.openAuthSessionAsync(
-          authUrl,
-          GOOGLE_REDIRECT_URI,
-          {
-            createTask: false,
-            showInRecents: false,
-          },
-        );
+        const result = await WebBrowser.openAuthSessionAsync(authUrl, APP_RETURN_URL, {
+          showInRecents: false,
+        });
 
         if (result.type === 'success' && result.url) {
           finishOAuthInWebView(result.url);
           return;
         }
 
-        if (result.type === 'cancel' || result.type === 'dismiss') {
-          return;
-        }
-
-        Alert.alert(
-          'Sign-in failed',
-          `Google sign-in did not return to the app. Add this redirect URI in Google Cloud:\n\n${GOOGLE_REDIRECT_URI}`,
-        );
+        // type 'cancel'/'dismiss' — user closed the browser, do nothing.
       } catch (error) {
         Alert.alert('Sign-in failed', error?.message || 'Google sign-in failed.');
       } finally {
@@ -103,9 +97,9 @@ export default function App() {
     [finishOAuthInWebView],
   );
 
-  const handleOAuthDeepLink = useCallback(
+  const handleDeepLink = useCallback(
     (url) => {
-      if (isOAuthCallbackUrl(url)) {
+      if (hasOAuthToken(url)) {
         finishOAuthInWebView(url);
       }
     },
@@ -118,17 +112,19 @@ export default function App() {
         const data = JSON.parse(event.nativeEvent.data);
         if (data.type === 'GOOGLE_OAUTH_START') {
           openGoogleOAuthInSystemBrowser(data.clientId || GOOGLE_CLIENT_ID);
+        } else if (data.type === 'GOOGLE_OAUTH_RESULT' && data.hash) {
+          finishOAuthInWebView(`${APP_RETURN_URL}${data.hash}`);
         }
       } catch {
         // Ignore non-JSON messages from the web app.
       }
     },
-    [openGoogleOAuthInSystemBrowser],
+    [finishOAuthInWebView, openGoogleOAuthInSystemBrowser],
   );
 
   const shouldStartLoad = useCallback(
     (request) => {
-      if (isOAuthCallbackUrl(request.url)) {
+      if (hasOAuthToken(request.url)) {
         finishOAuthInWebView(request.url);
         return false;
       }
@@ -143,15 +139,15 @@ export default function App() {
 
   useEffect(() => {
     Linking.getInitialURL().then((url) => {
-      if (url) handleOAuthDeepLink(url);
+      if (url) handleDeepLink(url);
     });
 
     const subscription = Linking.addEventListener('url', ({ url }) => {
-      handleOAuthDeepLink(url);
+      handleDeepLink(url);
     });
 
     return () => subscription.remove();
-  }, [handleOAuthDeepLink]);
+  }, [handleDeepLink]);
 
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -197,7 +193,7 @@ export default function App() {
         javaScriptCanOpenWindowsAutomatically={false}
         injectedJavaScriptBeforeContentLoaded={WEBVIEW_BOOTSTRAP_SCRIPT}
         allowsBackForwardNavigationGestures={true}
-        originWhitelist={['https://*', 'http://*']}
+        originWhitelist={['https://*', 'http://*', 'com.reclaim.app://*']}
         mixedContentMode="always"
         bounces={false}
         {...Platform.select({
