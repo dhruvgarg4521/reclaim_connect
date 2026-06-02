@@ -1,20 +1,17 @@
 
 import React, { useCallback, useEffect, useRef } from 'react';
-import { Platform, StyleSheet, SafeAreaView, StatusBar, BackHandler, Alert } from 'react-native';
+import { Linking, Platform, StyleSheet, SafeAreaView, StatusBar, BackHandler, Alert } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as WebBrowser from 'expo-web-browser';
 
-/**
- * IMPORTANT: Update these constants before building your APK
- */
-
-// Must match APP_SECRET in src/main.jsx of your web app
 const APP_SECRET = 'reclaim_app_2024_secure';
 
-// Must match VITE_GOOGLE_OAUTH_REDIRECT_URI on Vercel (no trailing slash)
-const GOOGLE_OAUTH_REDIRECT_URI = 'https://reclaim-connect.vercel.app';
+const GOOGLE_CLIENT_ID =
+  '369715680831-9i7v8fjnk9gqckm272k29rk73n45gf60.apps.googleusercontent.com';
 
-// TODO: Replace with your actual Vercel deployment URL (remove trailing slash!)
+// Dedicated callback page — NOT the main SPA. Register in Google Cloud redirect URIs.
+const GOOGLE_REDIRECT_URI = 'https://reclaim-connect.vercel.app/oauth-callback.html';
+
 const WEB_APP_URL = 'https://reclaim-connect.vercel.app';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -32,8 +29,24 @@ function isGoogleOAuthUrl(url) {
   );
 }
 
+function isOAuthCallbackUrl(url) {
+  return url.includes('/oauth-callback.html') && url.includes('access_token=');
+}
+
+function buildGoogleAuthUrl(clientId) {
+  const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  authUrl.searchParams.set('client_id', clientId);
+  authUrl.searchParams.set('redirect_uri', GOOGLE_REDIRECT_URI);
+  authUrl.searchParams.set('response_type', 'token');
+  authUrl.searchParams.set('scope', 'openid email profile');
+  authUrl.searchParams.set('include_granted_scopes', 'true');
+  authUrl.searchParams.set('prompt', 'select_account');
+  return authUrl.toString();
+}
+
 export default function App() {
   const webViewRef = useRef(null);
+  const oauthInFlight = useRef(false);
 
   const finishOAuthInWebView = useCallback((returnUrl) => {
     if (!returnUrl || !webViewRef.current) return;
@@ -43,7 +56,7 @@ export default function App() {
         if (window.__reclaimHandleOAuthReturn) {
           window.__reclaimHandleOAuthReturn(${JSON.stringify(returnUrl)});
         } else {
-          window.location.replace(${JSON.stringify(returnUrl)});
+          window.location.replace(${JSON.stringify(WEB_APP_URL + '?app_token=' + APP_SECRET)});
         }
       })();
       true;
@@ -51,11 +64,21 @@ export default function App() {
   }, []);
 
   const openGoogleOAuthInSystemBrowser = useCallback(
-    async (authUrl) => {
+    async (clientId) => {
+      if (oauthInFlight.current) return;
+      oauthInFlight.current = true;
+
       try {
+        await WebBrowser.coolDownAsync();
+        const authUrl = buildGoogleAuthUrl(clientId || GOOGLE_CLIENT_ID);
+
         const result = await WebBrowser.openAuthSessionAsync(
           authUrl,
-          GOOGLE_OAUTH_REDIRECT_URI,
+          GOOGLE_REDIRECT_URI,
+          {
+            createTask: false,
+            showInRecents: false,
+          },
         );
 
         if (result.type === 'success' && result.url) {
@@ -63,13 +86,27 @@ export default function App() {
           return;
         }
 
-        if (result.type === 'cancel') {
+        if (result.type === 'cancel' || result.type === 'dismiss') {
           return;
         }
 
-        Alert.alert('Sign-in failed', 'Google sign-in did not complete. Please try again.');
+        Alert.alert(
+          'Sign-in failed',
+          `Google sign-in did not return to the app. Add this redirect URI in Google Cloud:\n\n${GOOGLE_REDIRECT_URI}`,
+        );
       } catch (error) {
         Alert.alert('Sign-in failed', error?.message || 'Google sign-in failed.');
+      } finally {
+        oauthInFlight.current = false;
+      }
+    },
+    [finishOAuthInWebView],
+  );
+
+  const handleOAuthDeepLink = useCallback(
+    (url) => {
+      if (isOAuthCallbackUrl(url)) {
+        finishOAuthInWebView(url);
       }
     },
     [finishOAuthInWebView],
@@ -79,8 +116,8 @@ export default function App() {
     (event) => {
       try {
         const data = JSON.parse(event.nativeEvent.data);
-        if (data.type === 'GOOGLE_OAUTH_START' && data.authUrl) {
-          openGoogleOAuthInSystemBrowser(data.authUrl);
+        if (data.type === 'GOOGLE_OAUTH_START') {
+          openGoogleOAuthInSystemBrowser(data.clientId || GOOGLE_CLIENT_ID);
         }
       } catch {
         // Ignore non-JSON messages from the web app.
@@ -91,14 +128,30 @@ export default function App() {
 
   const shouldStartLoad = useCallback(
     (request) => {
+      if (isOAuthCallbackUrl(request.url)) {
+        finishOAuthInWebView(request.url);
+        return false;
+      }
       if (isGoogleOAuthUrl(request.url)) {
-        openGoogleOAuthInSystemBrowser(request.url);
+        openGoogleOAuthInSystemBrowser(GOOGLE_CLIENT_ID);
         return false;
       }
       return true;
     },
-    [openGoogleOAuthInSystemBrowser],
+    [finishOAuthInWebView, openGoogleOAuthInSystemBrowser],
   );
+
+  useEffect(() => {
+    Linking.getInitialURL().then((url) => {
+      if (url) handleOAuthDeepLink(url);
+    });
+
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleOAuthDeepLink(url);
+    });
+
+    return () => subscription.remove();
+  }, [handleOAuthDeepLink]);
 
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {

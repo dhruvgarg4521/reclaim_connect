@@ -64,10 +64,9 @@ export function shouldUseGoogleRedirect() {
 
 export function getGoogleOAuthRedirectUri() {
   const configured = appConfig.googleOauthRedirectUri.trim();
-  if (configured) return configured;
+  if (configured) return configured.replace(/\/$/, '');
 
-  // Must match Google Cloud "Authorized redirect URIs" exactly (no trailing slash).
-  return window.location.origin;
+  return window.location.origin.replace(/\/$/, '');
 }
 
 function mapGoogleProfile(profile) {
@@ -95,6 +94,17 @@ async function fetchGoogleProfile(accessToken) {
 }
 
 function signInWithGoogleGisRedirect(clientId) {
+  // Native wrapper builds OAuth URL with app-scheme redirect (com.reclaim.app:/oauth).
+  if (window.ReactNativeWebView?.postMessage) {
+    window.ReactNativeWebView.postMessage(
+      JSON.stringify({
+        type: 'GOOGLE_OAUTH_START',
+        clientId,
+      }),
+    );
+    return;
+  }
+
   const redirectUri = getGoogleOAuthRedirectUri();
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   authUrl.searchParams.set('client_id', clientId);
@@ -103,21 +113,7 @@ function signInWithGoogleGisRedirect(clientId) {
   authUrl.searchParams.set('scope', 'openid email profile');
   authUrl.searchParams.set('include_granted_scopes', 'true');
   authUrl.searchParams.set('prompt', 'select_account');
-
-  const authUrlString = authUrl.toString();
-
-  if (window.ReactNativeWebView?.postMessage) {
-    window.ReactNativeWebView.postMessage(
-      JSON.stringify({
-        type: 'GOOGLE_OAUTH_START',
-        authUrl: authUrlString,
-        redirectUri,
-      }),
-    );
-    return;
-  }
-
-  window.location.assign(authUrlString);
+  window.location.assign(authUrl.toString());
 }
 
 async function signInWithGoogleGisPopup(clientId) {
