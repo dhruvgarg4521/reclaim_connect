@@ -264,35 +264,68 @@ function LaunchSplash() {
 
 function AboutScreen({ onContinue }) {
   const features = [
-    { icon: ShieldCheck, text: '90-second SOS reset when urges hit' },
-    { icon: TrendingUp, text: 'Track your streak, clarity and progress' },
-    { icon: IndianRupee, text: 'See money and time you reclaim' },
-    { icon: HeartHandshake, text: 'Daily wisdom and AI guidance from Guruji' },
+    {
+      icon: TimerReset,
+      title: '90-Second SOS Reset',
+      science: 'Proven by neuroscience',
+      text: 'Urges peak and dissolve within 90 seconds when you interrupt them physically. Deep breathing activates the vagus nerve, cutting cortisol and craving signals within minutes.',
+    },
+    {
+      icon: Flame,
+      title: 'Streak & Clarity Tracking',
+      science: 'Neuroplasticity research',
+      text: 'Your brain rewires itself over 21–40 days of consistent clean behaviour. Tracking daily makes the change visible and reinforces the new neural pathways being built.',
+    },
+    {
+      icon: BadgeCheck,
+      title: 'Daily Sankalp (Pledge)',
+      science: 'Habit formation science',
+      text: 'A daily conscious commitment reduces relapse by 3× compared to willpower alone. Intention-setting each morning activates the prefrontal cortex — your rational decision-maker.',
+    },
+    {
+      icon: Bot,
+      title: 'AI Recovery Guide',
+      science: '24/7 personalised support',
+      text: 'Guided by recovery psychology, the AI gives you an immediate, personalised next step in moments of urge, guilt, or stress — reducing the 90-second window where most relapses happen.',
+    },
   ];
 
   return (
     <AppFrame>
-      <div className="intro-screen intro-screen--compact">
-        <div className="intro-brand">
+      <div className="intro-screen intro-screen--about">
+        <div className="about-header">
           <IntroBrandHeader compact />
-          <p className="intro-brand__lead">
-            Your private companion to quit the habit holding you back.
+          <p className="about-headline">
+            Scientifically proven methods to break free from addiction.
           </p>
-          <ul className="intro-brand__features">
-            {features.map(({ icon: Icon, text }) => (
-              <li key={text}>
-                <Icon size={16} />
-                <span>{text}</span>
-              </li>
-            ))}
-          </ul>
+          <p className="about-sub">
+            Used by thousands. Built on neuroplasticity, habit science, and spiritual discipline.
+          </p>
         </div>
+
+        <ul className="about-features">
+          {features.map(({ icon: Icon, title, science, text }) => (
+            <li key={title} className="about-feature">
+              <div className="about-feature__icon">
+                <Icon size={20} />
+              </div>
+              <div className="about-feature__body">
+                <div className="about-feature__top">
+                  <strong>{title}</strong>
+                  <span className="about-feature__badge">{science}</span>
+                </div>
+                <p>{text}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+
         <div className="intro-footer">
           <button type="button" className="primary-action wide intro-footer__button" onClick={onContinue}>
-            Get Started
+            Begin My Recovery
             <ChevronRight size={20} />
           </button>
-          <p className="intro-footer__note">Private. Your data stays on your device.</p>
+          <p className="intro-footer__note">Private · Secure · No data sold</p>
         </div>
       </div>
     </AppFrame>

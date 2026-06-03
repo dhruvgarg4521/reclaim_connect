@@ -37,34 +37,123 @@ function resolveSource() {
 }
 
 /**
- * Trim the black border off the source logo and round the corners to
- * transparent so no black squircle edges remain. Returns a square PNG buffer.
+ * Extract only the "R" symbol, removing the white/lavender squircle container
+ * so the mark sits directly on a transparent (later: white) background.
+ *
+ * Strategy:
+ *   1. Trim black outer border.
+ *   2. Crop bottom ~28% (RECLAIM text).
+ *   3. Process raw pixels: make near-white pixels transparent, keeping only
+ *      the coloured "R" mark (purple/blue) and its dark shadows.
+ *   4. Resize and return as transparent PNG — caller composites on canvas.
  */
 async function getCleanLogo(size) {
   const src = resolveSource();
   if (!src) throw new Error('No logo source found (assets/logo-source.png).');
 
-  // Work at higher resolution, then trim the solid black border.
-  const work = Math.max(size, 1024);
-  const trimmed = await sharp(src)
-    .trim({ background: '#000000', threshold: 45 })
-    .resize(work, work, { fit: 'contain', background: TRANSPARENT })
+  const WORK = 1200; // high-res work size for precision
+
+  // ── Step 1: trim black outer border ─────────────────────────────
+  const trimmedBuf = await sharp(src)
+    .trim({ background: '#000000', threshold: 40 })
+    .resize(WORK, WORK, { fit: 'contain', background: TRANSPARENT })
     .png()
     .toBuffer();
 
-  // The trimmed box still includes the soft dark drop-shadow halo around the
-  // white squircle. Crop inward past the halo so only the white logo remains.
-  const inset = Math.round(work * 0.085);
-  const cropped = await sharp(trimmed)
-    .extract({ left: inset, top: inset, width: work - inset * 2, height: work - inset * 2 })
-    .resize(size, size, { fit: 'fill' })
+  // ── Step 2: crop inward past the drop-shadow halo ────────────────
+  const inset = Math.round(WORK * 0.07);
+  const innerBuf = await sharp(trimmedBuf)
+    .extract({ left: inset, top: inset, width: WORK - inset * 2, height: WORK - inset * 2 })
     .png()
     .toBuffer();
 
-  // Round corners to match the squircle so any residual edge is cut to transparent.
-  const radius = Math.round(size * 0.2);
-  return sharp(cropped)
-    .composite([{ input: roundedMaskSvg(size, radius), blend: 'dest-in' }])
+  // ── Step 3: crop off the RECLAIM text (bottom 28%) ───────────────
+  const innerMeta = await sharp(innerBuf).metadata();
+  const keepH = Math.round(innerMeta.height * 0.72);
+  const rOnlyBuf = await sharp(innerBuf)
+    .extract({ left: 0, top: 0, width: innerMeta.width, height: keepH })
+    .ensureAlpha()
+    .png()
+    .toBuffer();
+
+  // ── Step 4: remove near-white / lavender squircle background ─────
+  // Process raw RGBA pixels: pixels where all RGB channels are > 210
+  // are the white squircle container — make them transparent.
+  // The "R" mark is purple/blue (B channel >> R, G < 200) and its
+  // drop shadows are near-black — both are kept.
+  const { data, info } = await sharp(rOnlyBuf)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const pixels = new Uint8ClampedArray(data.buffer);
+  const W = info.width;
+  const H = info.height;
+
+  for (let i = 0; i < pixels.length; i += 4) {
+    const pr = pixels[i];
+    const pg = pixels[i + 1];
+    const pb = pixels[i + 2];
+
+    // Remove near-white / lavender squircle background.
+    // The "R" mark is purple/blue so its pixels have: B is highest, R moderate, G lower.
+    // We keep pixels that look like the R (coloured) or its core shadows (very dark).
+    const col = (i / 4) % W;
+    const row = Math.floor((i / 4) / W);
+
+    // The "R" mark has strongly blue-shifted pixels (blue channel >> red/green).
+    // The squircle's background and border strokes are neutral white/gray/lavender.
+    // We use this to safely distinguish squircle from logo.
+    const isStrongBlue = pb - pr > 35 || pb - pg > 35;
+
+    // Near-white: squircle fill and fade zones (exempt strongly-blue R pixels).
+    const isNearWhite = !isStrongBlue && pr > 185 && pg > 185 && pb > 185;
+
+    // Corner drop-shadow artefacts from the squircle shape.
+    const cornerZone = 0.20;
+    const inCorner = (
+      (col < W * cornerZone || col > W * (1 - cornerZone)) &&
+      (row < H * cornerZone || row > H * (1 - cornerZone))
+    );
+
+    // Side-border stroke artefacts: thin vertical lines at the left/right edges
+    // of the squircle. R starts at ~28% from the left so this zone is safe to clear.
+    const inSideBorder = col < W * 0.25 || col > W * 0.75;
+    const isSideBorderArtifact = inSideBorder && !isStrongBlue && (pr < 160 || pg < 160);
+
+    if (isNearWhite || inCorner || isSideBorderArtifact) {
+      pixels[i + 3] = 0; // transparent
+    }
+  }
+
+  // ── Step 5: convert back to sharp + trim to the R mark's bounding box ──
+  // Trimming transparent edges removes any squircle border artifacts that
+  // slipped through the pixel pass — the R mark then fills the buffer cleanly.
+  const cleanBuf = await sharp(Buffer.from(pixels.buffer), {
+    raw: { width: info.width, height: info.height, channels: 4 },
+  })
+    .png()
+    .toBuffer();
+
+  const trimmedClean = await sharp(cleanBuf)
+    .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 5 })
+    .png()
+    .toBuffer();
+
+  // ── Step 6: resize to target size with padding ───────────────────
+  // fit: 'contain' scales to fill ~80% of the icon so the R has breathing room.
+  const inner = Math.round(size * 0.82);
+  const padded = await sharp(trimmedClean)
+    .resize(inner, inner, { fit: 'contain', background: TRANSPARENT })
+    .png()
+    .toBuffer();
+
+  // Embed on a full-size transparent canvas (centred).
+  const offset = Math.round((size - inner) / 2);
+  return sharp({
+    create: { width: size, height: size, channels: 4, background: TRANSPARENT },
+  })
+    .composite([{ input: padded, left: offset, top: offset }])
     .png()
     .toBuffer();
 }
@@ -94,20 +183,21 @@ async function main() {
     fs.mkdirSync(assetsDir, { recursive: true });
   }
 
-  // iOS / main icon: white background, logo fills most of the square.
-  const iconLogo = await composeReady(1004);
+  // iOS / main icon: "R" on clean white square. 700px symbol gives breathing room.
+  const iconLogo = await composeReady(700);
   await composeOnCanvas(iconLogo, 1024, 1024, ICON_BG, 'icon.png');
 
-  // Android adaptive foreground: transparent bg, logo in the safe zone (~70%).
-  const adaptiveLogo = await composeReady(720);
+  // Android adaptive foreground: transparent canvas, R inside 66% safe zone.
+  // Safe zone is ~680px on a 1024px canvas — use 580px to be comfortably inside.
+  const adaptiveLogo = await composeReady(580);
   await composeOnCanvas(adaptiveLogo, 1024, 1024, TRANSPARENT, 'adaptive-icon.png');
 
-  // Splash: logo centered on the dark brand background.
-  const splashLogo = await composeReady(760);
+  // Splash: "R" on dark brand background.
+  const splashLogo = await composeReady(500);
   await composeOnCanvas(splashLogo, 1284, 2778, SPLASH_BG, 'splash.png');
 
   // Favicon
-  const favLogo = await composeReady(46);
+  const favLogo = await composeReady(38);
   await composeOnCanvas(favLogo, 48, 48, ICON_BG, 'favicon.png');
 
   console.log('\n✨ Done! Icons written to mobile-app/assets/\n');
