@@ -3802,14 +3802,18 @@ h3 {
   .phone-frame {
     width: 100%;
     height: 100vh;
+    height: 100dvh;
     min-height: 100vh;
     border-radius: 0;
     border: 0;
+    /* Push content below the device status bar (time, battery, signal) */
+    padding-top: env(safe-area-inset-top);
   }
 
   .bottom-nav {
     right: 14px;
-    bottom: 10px;
+    /* Sit above the home indicator / gesture bar on phones */
+    bottom: max(10px, env(safe-area-inset-bottom));
     left: 14px;
   }
 
