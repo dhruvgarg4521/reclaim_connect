@@ -847,6 +847,40 @@ h3 {
   width: 100%;
 }
 
+/* ── Streak stat sub-label ─────────────────────────────────────── */
+.stat-card .stat-subvalue {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
+  margin-top: 2px;
+  letter-spacing: 0.02em;
+}
+
+/* ── Streak rules card inside StatModal ────────────────────────── */
+.streak-rules-card {
+  width: 100%;
+  margin: 14px 0 6px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(255, 196, 107, 0.08);
+  border: 1px solid rgba(255, 196, 107, 0.22);
+}
+.streak-rules-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #ffc46b;
+  margin: 0 0 10px;
+  letter-spacing: 0.02em;
+}
+.streak-rules-line {
+  font-size: 0.8rem;
+  color: #b8c2cc;
+  line-height: 1.6;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
 .danger-action {
   min-height: 44px;
   padding: 0 14px;

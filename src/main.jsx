@@ -133,18 +133,19 @@ const defaultState = {
   signedIn: false,
   authUser: null,
   lifetimeOfferSeen: false,
-  quitDate: new Date().toISOString(), // Start from today
-  dailyCost: 0, // User must set this
-  savingFor: '', // What item/goal they're saving for
-  productLink: '', // Link to product they want to buy
-  productPrice: 0, // Price of the product
-  clarityBase: 0, // Start from 0
+  quitDate: new Date().toISOString(),
+  dailyCost: 0,
+  savingFor: '',
+  productLink: '',
+  productPrice: 0,
+  clarityBase: 0,
   relapses: [],
   pledges: [],
   completedPractices: [],
   communityJoined: false,
   aiMessages: starterMessages,
-  journal: [], // Start with empty journal
+  journal: [],
+  maxStreak: 0,
 };
 
 function DownloadAppScreen() {
@@ -424,15 +425,19 @@ function ReclaimApp() {
         setAuthBootstrapping(false);
       });
     } else if (isSupabaseConfigured) {
-      // Restore email/password session from Supabase
+      // Restore email/password session from Supabase.
+      // Important: do NOT override a Google/Firebase session (provider !== 'email')
+      // just because Supabase has no record of it.
       unsub = subscribeToSupabaseAuth((sbUser) => {
         if (cancelled) return;
-        const authUser = sbUser ? mapSupabaseUser(sbUser) : null;
-        setAppState((current) => ({
-          ...current,
-          signedIn: Boolean(authUser),
-          authUser,
-        }));
+        setAppState((current) => {
+          if (!sbUser && current.authUser?.provider !== 'email') {
+            // Google user with no Supabase session — keep their stored session.
+            return current;
+          }
+          const authUser = sbUser ? mapSupabaseUser(sbUser) : null;
+          return { ...current, signedIn: Boolean(authUser), authUser };
+        });
         setAuthBootstrapping(false);
       });
     }
@@ -495,10 +500,17 @@ function ReclaimApp() {
   useEffect(() => {
     const timer = window.setInterval(() => {
       setQuoteIndex((current) => (current + 1) % quotes.length);
-    }, 15000); // 15 seconds
+    }, 15000);
 
     return () => window.clearInterval(timer);
   }, []);
+
+  // Track max streak — update whenever current streak beats the stored best
+  useEffect(() => {
+    if (daysClean > 0 && daysClean > (appState.maxStreak || 0)) {
+      updateState((current) => ({ ...current, maxStreak: daysClean }));
+    }
+  }, [daysClean]);
 
   const todayKey = getDayKey(new Date());
   const pledgedToday = appState.pledges.includes(todayKey);
@@ -803,7 +815,13 @@ function ReclaimApp() {
   }
 
   const statCards = [
-    { icon: Flame, label: 'Streak', value: `${daysClean} day${daysClean === 1 ? '' : 's'}`, tone: 'sun' },
+    {
+      icon: Flame,
+      label: 'Streak',
+      value: `${daysClean}d`,
+      subValue: `Best ${appState.maxStreak || 0}d`,
+      tone: 'sun',
+    },
     { icon: IndianRupee, label: 'Saved', value: formatRupees(moneySaved), tone: 'mint' },
     { icon: TrendingUp, label: 'Clarity', value: `${clarity}%`, tone: 'blue' },
     { icon: ShieldCheck, label: 'Relapses', value: String(appState.relapses.length), tone: 'rose' },
@@ -1031,6 +1049,7 @@ function ReclaimApp() {
           <StatModal
             type={activeStatModal}
             daysClean={daysClean}
+            maxStreak={appState.maxStreak || 0}
             moneySaved={moneySaved}
             clarity={clarity}
             relapses={appState.relapses}
@@ -1902,12 +1921,13 @@ function GuruPanel({ quote, onNextQuote, currentIndex, totalQuotes }) {
   );
 }
 
-function Stat({ icon: Icon, label, value, tone, onClick }) {
+function Stat({ icon: Icon, label, value, subValue, tone, onClick }) {
   return (
     <article className={`stat-card ${tone} ${onClick ? 'clickable' : ''}`} onClick={onClick}>
       <Icon size={18} />
       <p>{label}</p>
       <strong>{value}</strong>
+      {subValue ? <small className="stat-subvalue">{subValue}</small> : null}
     </article>
   );
 }
@@ -2443,7 +2463,7 @@ function SavingsModal({ daysClean, moneySaved, quitDate, dailyCost, savingFor, o
   );
 }
 
-function StatModal({ type, daysClean, moneySaved, clarity, relapses, quitDate, dailyCost, savingFor, completedPractices, onClose, onUpdateSavings }) {
+function StatModal({ type, daysClean, maxStreak, moneySaved, clarity, relapses, quitDate, dailyCost, savingFor, completedPractices, onClose, onUpdateSavings }) {
   const getModalContent = () => {
     switch (type) {
       case 'Streak':
@@ -2452,18 +2472,28 @@ function StatModal({ type, daysClean, moneySaved, clarity, relapses, quitDate, d
           color: '#ffc46b',
           title: `${daysClean} Day Streak`,
           details: [
-            { label: 'Days clean', value: daysClean },
-            { label: 'Quit date', value: new Date(quitDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) },
-            { label: 'Next milestone', value: daysClean < 7 ? '7 days' : daysClean < 21 ? '21 days' : daysClean < 40 ? '40 days' : '90 days' },
+            { label: '🔥 Current streak', value: `${daysClean} day${daysClean === 1 ? '' : 's'}` },
+            { label: '🏆 Best streak', value: `${maxStreak || 0} day${maxStreak === 1 ? '' : 's'}` },
+            { label: '📅 Quit date', value: new Date(quitDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) },
+            { label: '⏭ Next milestone', value: daysClean < 7 ? '7 days' : daysClean < 21 ? '21 days' : daysClean < 40 ? '40 days' : '90 days' },
+          ],
+          rulesTitle: 'How your streak is counted',
+          rules: [
+            '❌ Zero relapses since your quit date',
+            '✅ At least 2 of 4 daily practices completed:',
+            '   • 2 min breathing (8 rounds)',
+            '   • Satsang clip (12 min)',
+            '   • Journal (3 lines)',
+            '   • No phone after 10:30 PM',
           ],
           message: daysClean === 1
             ? 'Great start! The first day is always the hardest. Keep going!'
             : daysClean < 7
-            ? 'You\'re building momentum. The first week is crucial - stay strong!'
+            ? 'Building momentum. The first week is crucial — stay strong!'
             : daysClean < 21
-            ? 'You\'re past the first week! Keep protecting your progress.'
+            ? 'Past the first week! Keep protecting your progress.'
             : daysClean < 40
-            ? 'Amazing progress! You\'re creating new neural pathways.'
+            ? 'Amazing! You\'re creating new neural pathways.'
             : 'Incredible! You\'re building a lasting transformation.',
         };
       case 'Saved':
@@ -2548,6 +2578,15 @@ function StatModal({ type, daysClean, moneySaved, clarity, relapses, quitDate, d
               </div>
             ))}
           </div>
+
+          {content.rules ? (
+            <div className="streak-rules-card">
+              <p className="streak-rules-title">{content.rulesTitle}</p>
+              {content.rules.map((rule, i) => (
+                <p className="streak-rules-line" key={i}>{rule}</p>
+              ))}
+            </div>
+          ) : null}
 
           <p className="stat-modal-message">{content.message}</p>
         </div>
@@ -2705,29 +2744,85 @@ function formatEntryTime(value) {
 
 function buildAiReply(message, context) {
   const text = message.toLowerCase();
-  const prefix = `You are on day ${context.daysClean} with ${context.level || 'moderate'} risk.`;
+  const day = context.daysClean;
+  const level = context.level || 'Moderate';
+  const prefix = `Day ${day} · ${level} risk.`;
 
-  if (text.includes('urge') || text.includes('trigger') || text.includes('tempt')) {
-    return `${prefix} Start SOS now: stand up, drink water, breathe for 90 seconds, and move to a public place. Do not negotiate with the urge.`;
+  // ── Urge / Temptation ───────────────────────────────────────────
+  if (text.includes('urge') || text.includes('trigger') || text.includes('tempt') || text.includes('craving')) {
+    const steps = [
+      '1. Put the phone face-down RIGHT NOW.',
+      '2. Stand up and move to a different room or outside.',
+      '3. Drink a full glass of cold water slowly.',
+      '4. Do 8 rounds of box breathing: 4 counts in · hold 2 · 6 counts out.',
+      '5. Say your sankalp out loud once with full conviction.',
+      '6. Text a friend or open the SOS timer in Home tab.',
+    ];
+    return `${prefix} An urge is a wave — it peaks in 90 seconds and fades on its own. Do NOT negotiate, do NOT bargain. Act immediately:\n\n${steps.join('\n')}\n\nUrges feel permanent but they never are. The moment you move your body, the urge loses 70% of its power. You have done this before. Do it again.`;
   }
 
-  if (text.includes('relapse') || text.includes('failed') || text.includes('slip')) {
-    return 'Reset without shame. Write the trigger, remove the same condition for tomorrow, and take the next pledge. One fall is data, not your identity.';
+  // ── Relapse ─────────────────────────────────────────────────────
+  if (text.includes('relapse') || text.includes('failed') || text.includes('slip') || text.includes('fell')) {
+    return `${prefix} A relapse is painful data, not a verdict on your character. Here is what to do right now:\n\n1. Log it honestly in the app — hiding it makes the next one more likely.\n2. Write down what happened: time, place, device, mood. That pattern is your real enemy.\n3. Remove or block whatever enabled it — delete the app, change the password, put the device in another room at night.\n4. Take tomorrow's pledge tonight, not tomorrow morning.\n5. Come back to day 1 without shame. Every expert on this path has reset. What separates them is they came back faster each time.\n\nGuruji says: one fall does not erase the climb. Stand up, wipe the dust, and walk again.`;
   }
 
-  if (text.includes('guilt') || text.includes('shame') || text.includes('bad')) {
-    return 'Guilt should become correction, not self-hate. Take a bath or walk, say your sankalp once, and do one clean action immediately.';
+  // ── Guilt / Shame ────────────────────────────────────────────────
+  if (text.includes('guilt') || text.includes('shame') || text.includes('worthless') || text.includes('hate myself') || text.includes('bad person')) {
+    return `${prefix} Guilt that becomes self-hate is the enemy of recovery — it creates the very emptiness that leads back to the habit. Here is the difference:\n\nHealthy guilt → "I did something I regret, I will correct it."\nToxic shame → "I am broken, what's the point."\n\nRight now:\n• Take a cold shower or splash cold water on your face.\n• Say out loud: "I am not this habit. I am bigger than this moment."\n• Do one small, clean action: make your bed, drink water, go for a 5-minute walk.\n• Write three lines in your journal about what you want your life to look like in 40 days.\n\nYou are not your worst moment. You are here, you are trying. That already makes you different from most.`;
   }
 
-  if (text.includes('meditat') || text.includes('focus') || text.includes('calm')) {
-    return 'Try this: inhale for 4 counts, hold for 2, exhale for 6. Repeat 8 rounds, then listen to one satsang clip before touching social media.';
+  // ── Boredom ──────────────────────────────────────────────────────
+  if (text.includes('bored') || text.includes('nothing to do') || text.includes('free time') || text.includes('idle')) {
+    return `${prefix} Boredom is one of the top three relapse triggers — your brain is used to filling empty moments with the habit. Here is what to do with unstructured time:\n\n• Physical: 20 push-ups, a walk outside, stretching.\n• Mental: Read 5 pages of a book, write in your journal, learn one new thing.\n• Social: Call a family member or friend — real conversation, not scrolling.\n• Spiritual: Listen to a satsang clip, recite a prayer, sit in silence for 5 minutes.\n\nBoredom is a signal that your life needs more richness, not more stimulation. Use this moment to build one of those four areas instead of escaping them.`;
   }
 
+  // ── Stress / Anxiety ─────────────────────────────────────────────
+  if (text.includes('stress') || text.includes('anxious') || text.includes('anxiety') || text.includes('pressure') || text.includes('overwhelm')) {
+    return `${prefix} Stress is the second most common relapse trigger. Your nervous system is looking for a release — let's give it a clean one.\n\nImmediate relief (do this now):\n• 4-7-8 breathing: inhale 4, hold 7, exhale 8. Repeat 4 times.\n• Tense every muscle in your body for 5 seconds, then release completely.\n• Write down the ONE thing stressing you most. Just naming it reduces it by 40%.\n\nAfter 10 minutes:\n• Break the stressor into the smallest possible next action. Not "fix everything" — just "send one email" or "write one paragraph."\n• The habit never solved stress. It only delayed it and added shame on top.\n\nYou can handle this. You have handled harder things.`;
+  }
+
+  // ── Meditation / Calm ────────────────────────────────────────────
+  if (text.includes('meditat') || text.includes('calm') || text.includes('peace') || text.includes('quiet') || text.includes('breathe')) {
+    return `${prefix} A short practice you can do right now (5 minutes):\n\n1. Sit comfortably, close your eyes.\n2. Breathe in for 4 counts through your nose.\n3. Hold for 2 counts.\n4. Breathe out for 6 counts through your mouth.\n5. After 8 rounds, simply observe your breath without controlling it for 2 minutes.\n6. End by saying your sankalp silently three times.\n\nFor satsang: search for "Guruji bhajan" or any devotional audio you resonate with. Even 10 minutes of satsang rewires the mind away from craving and toward devotion. Make it part of your morning before you touch the phone for anything else.`;
+  }
+
+  // ── Isolation / Loneliness ───────────────────────────────────────
+  if (text.includes('lonely') || text.includes('alone') || text.includes('no one') || text.includes('isolat')) {
+    return `${prefix} Isolation is the third pillar of relapse — the habit thrives in private, in the dark, when you feel unseen. Break the isolation:\n\n• Call one person right now — family, friend, anyone. You do not have to explain your recovery. Just connect.\n• Join our Telegram community (More tab) — there are others on day 1, day 10, day 40, all walking this same path.\n• Go somewhere public: a chai stall, library, park. Physical presence with others breaks the spiral.\n\nRemember: the habit promised you company but kept you more alone. Real connection is the cure — even a 5-minute phone call counts.`;
+  }
+
+  // ── Sleep / Night ────────────────────────────────────────────────
+  if (text.includes('sleep') || text.includes('night') || text.includes('late') || text.includes('insomnia') || text.includes('bed')) {
+    return `${prefix} Late nights are a high-risk window for urges. Your willpower depletes through the day and is lowest after 10 PM. Protect this time:\n\nEvening protocol:\n• Phone charger in the hall or kitchen — not the bedroom.\n• No social media or YouTube after 10:30 PM.\n• Before bed: 5 min breathing + say your sankalp + write one line in your journal.\n• If you cannot sleep: do the breathing exercise lying down. Do NOT open the phone.\n\nYour brain needs the deep sleep cycles to rebuild dopamine receptors damaged by the habit. Protecting your nights is protecting your recovery.`;
+  }
+
+  // ── Progress / Motivation ────────────────────────────────────────
+  if (text.includes('motivat') || text.includes('progress') || text.includes('how am i') || text.includes('worth it') || text.includes('give up')) {
+    const dayMessage = day === 0
+      ? 'You are at the beginning. Every expert was once here. The decision to start is 50% of the battle.'
+      : day < 7
+      ? `Day ${day} — you are through the hardest part. Most people give up in the first 72 hours. You did not.`
+      : day < 21
+      ? `Day ${day} — your brain is already rewiring. Dopamine receptors are starting to rebalance. You are past the peak withdrawal.`
+      : day < 40
+      ? `Day ${day} — you are in the deep recovery zone. Neural pathways for the habit are weakening. New ones are forming around discipline and clarity.`
+      : `Day ${day} — extraordinary. You are in the top 3% of people who attempt this journey. Your brain has rebuilt significant capacity for focus, confidence, and peace.`;
+
+    return `${dayMessage}\n\nThis is worth it because:\n• Your focus and memory are measurably improving.\n• Testosterone and confidence return around day 14-21.\n• Relationships and eye contact become easier.\n• The shame and fog that came with the habit are clearing.\n\nOne day at a time. You do not need to reach day 40 today. You only need to protect the next 90 minutes.`;
+  }
+
+  // ── No pledge taken ──────────────────────────────────────────────
   if (!context.pledgedToday) {
-    return `${prefix} Your next best step is simple: take today's pledge, complete one practice, and write a one-line journal entry.`;
+    return `${prefix} You have not taken today's pledge yet. That is your first action — everything else builds on it.\n\nGo to the Home tab → tap "Take Pledge" → read each line with full intention.\n\nThe pledge is not a formality. It is a daily decision to be conscious. People who take a daily pledge are 3x more consistent in recovery than those who only use willpower alone. Willpower runs out. A pledge reconnects you to your reason.`;
   }
 
-  return `${prefix} Stay steady. Protect your eyes, avoid isolation, keep the phone away at night, and use SOS at the first sign of bargaining.`;
+  // ── Default / General ────────────────────────────────────────────
+  const generalTips = [
+    `${prefix} You have pledged today — that is your foundation. Now protect it:\n\n• Morning: breathing + satsang before phone.\n• Afternoon: if boredom hits, move your body.\n• Evening: journal 3 lines before 10 PM.\n• Night: phone away from the bedroom.\n\nThe habit does not disappear — you outgrow it by filling your life with better things. What is one area of your life you want to rebuild? Focus there today.`,
+    `${prefix} A reminder of what you are building:\n\nDay 7 — fog clears, sleep improves.\nDay 14 — confidence and energy return.\nDay 21 — new habits are forming in your brain.\nDay 40 — you are a different person with a different relationship to your mind.\nDay 90 — full neurological recovery for most people.\n\nYou are not just quitting something. You are building someone. What does that person look like? Write it down tonight.`,
+    `${prefix} The three enemies of your streak today are: boredom, isolation, and the thought "just this once."\n\nWhen boredom comes: move your body or learn something.\nWhen isolation comes: call someone or go somewhere.\nWhen "just this once" comes: remember it has never been just once. Use SOS immediately.\n\nYou already know what to do. Trust that knowledge.`,
+  ];
+  return generalTips[day % generalTips.length];
 }
 
 createRoot(document.getElementById('root')).render(<App />);

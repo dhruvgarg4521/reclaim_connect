@@ -210,6 +210,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0B1014',
+    // SafeAreaView alone doesn't handle the Android status bar reliably.
+    // StatusBar.currentHeight gives the exact pixel height on Android.
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   webview: {
     flex: 1,
