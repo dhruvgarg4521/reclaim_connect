@@ -505,13 +505,6 @@ function ReclaimApp() {
     return () => window.clearInterval(timer);
   }, []);
 
-  // Track max streak — update whenever current streak beats the stored best
-  useEffect(() => {
-    if (daysClean > 0 && daysClean > (appState.maxStreak || 0)) {
-      updateState((current) => ({ ...current, maxStreak: daysClean }));
-    }
-  }, [daysClean]);
-
   const todayKey = getDayKey(new Date());
   const pledgedToday = appState.pledges.includes(todayKey);
   const completedToday = appState.completedPractices.filter((item) => item.startsWith(todayKey)).length;
@@ -813,6 +806,14 @@ function ReclaimApp() {
     }));
     notify('AI guide replied.');
   }
+
+  // Track max streak — placed here (after daysClean is computed) to avoid
+  // a temporal dead zone ReferenceError from accessing 'daysClean' too early.
+  useEffect(() => {
+    if (daysClean > 0 && daysClean > (appState.maxStreak || 0)) {
+      updateState((current) => ({ ...current, maxStreak: daysClean }));
+    }
+  }, [daysClean]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const statCards = [
     {
