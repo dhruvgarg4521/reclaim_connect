@@ -21,6 +21,9 @@ export const appConfig = {
   googleOauthClientId: import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || '',
   googleOauthRedirectUri: import.meta.env.VITE_GOOGLE_OAUTH_REDIRECT_URI || '',
   firebase: firebaseConfig,
+  supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
+  supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
 };
 
 export const isGoogleSignInReady = isFirebaseConfigured || Boolean(appConfig.googleOauthClientId);
+export const isSupabaseReady = Boolean(appConfig.supabaseUrl && appConfig.supabaseAnonKey);

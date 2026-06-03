@@ -33,15 +33,14 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "extra": {
-      "eas": {
-        "projectId": "b58fb05b-1776-47a3-b72f-c6bfbe32eade"
-      }
-    },
-    "owner": "fghjklkjhg",
     "scheme": "com.reclaim.app",
     "plugins": [
       "expo-web-browser"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "0a3f9695-6a92-432d-925e-82c5fd8d72fc"
+      }
+    }
   }
 }

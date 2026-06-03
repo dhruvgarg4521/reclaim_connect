@@ -37,6 +37,14 @@ import {
   signInWithGoogle as firebaseGoogleSignIn,
   subscribeToAuthChanges,
 } from './firebase';
+import {
+  isSupabaseConfigured,
+  mapSupabaseUser,
+  signInWithEmail,
+  signUpWithEmail,
+  supabaseSignOut,
+  subscribeToSupabaseAuth,
+} from './lib/supabase';
 import './styles.css';
 
 const STORAGE_KEY = 'reclaim-india-state-v1';
@@ -415,6 +423,18 @@ function ReclaimApp() {
         }));
         setAuthBootstrapping(false);
       });
+    } else if (isSupabaseConfigured) {
+      // Restore email/password session from Supabase
+      unsub = subscribeToSupabaseAuth((sbUser) => {
+        if (cancelled) return;
+        const authUser = sbUser ? mapSupabaseUser(sbUser) : null;
+        setAppState((current) => ({
+          ...current,
+          signedIn: Boolean(authUser),
+          authUser,
+        }));
+        setAuthBootstrapping(false);
+      });
     }
 
     return () => {
@@ -653,6 +673,24 @@ function ReclaimApp() {
     notify('App reset. Start the journey again.');
   }
 
+  async function upsertProfile(authUser) {
+    if (!authUser?.uid) return;
+    try {
+      await fetch('/api/me', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: authUser.uid,
+          full_name: authUser.name,
+          email: authUser.email,
+          avatar_url: authUser.photoURL || '',
+        }),
+      });
+    } catch {
+      // Profile sync is non-critical; ignore network errors
+    }
+  }
+
   async function loginWithGoogle() {
     setAuthError('');
     setAuthBusy(true);
@@ -660,11 +698,8 @@ function ReclaimApp() {
     try {
       const authUser = await firebaseGoogleSignIn();
       if (authUser) {
-        updateState((current) => ({
-          ...current,
-          signedIn: true,
-          authUser,
-        }));
+        updateState((current) => ({ ...current, signedIn: true, authUser }));
+        upsertProfile(authUser);
         notify('Logged in with Google.');
       }
     } catch (error) {
@@ -676,9 +711,50 @@ function ReclaimApp() {
     }
   }
 
+  async function loginWithEmail(email, password) {
+    setAuthError('');
+    setAuthBusy(true);
+    try {
+      const sbUser = await signInWithEmail(email, password);
+      const authUser = mapSupabaseUser(sbUser);
+      updateState((current) => ({ ...current, signedIn: true, authUser }));
+      upsertProfile(authUser);
+      notify('Logged in.');
+    } catch (error) {
+      const msg = error?.message || 'Sign-in failed. Check your email and password.';
+      setAuthError(msg);
+      notify(msg);
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function signupWithEmail(email, password, fullName) {
+    setAuthError('');
+    setAuthBusy(true);
+    try {
+      const sbUser = await signUpWithEmail(email, password, fullName);
+      if (!sbUser) {
+        setAuthError('Check your inbox to confirm your email, then sign in.');
+        return;
+      }
+      const authUser = mapSupabaseUser(sbUser);
+      updateState((current) => ({ ...current, signedIn: true, authUser }));
+      upsertProfile(authUser);
+      notify('Account created. Welcome!');
+    } catch (error) {
+      const msg = error?.message || 'Sign-up failed. Please try again.';
+      setAuthError(msg);
+      notify(msg);
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
   async function logout() {
     try {
       await firebaseSignOut();
+      await supabaseSignOut();
     } catch (error) {
       console.error(error);
     }
@@ -770,10 +846,13 @@ function ReclaimApp() {
       <AppFrame>
         <SigninScreen
           onSignin={loginWithGoogle}
+          onEmailSignin={loginWithEmail}
+          onEmailSignup={signupWithEmail}
           isBusy={authBusy}
           error={authError}
           isBootstrapping={authBootstrapping}
           isConfigured={isGoogleSignInReady}
+          isEmailConfigured={isSupabaseConfigured}
         />
       </AppFrame>
     );
@@ -1370,7 +1449,20 @@ function getAuthErrorMessage(error) {
   return error?.message || error?.error || 'Google sign-in failed. Please try again.';
 }
 
-function SigninScreen({ onSignin, isBusy, error, isBootstrapping, isConfigured }) {
+function SigninScreen({
+  onSignin,
+  onEmailSignin,
+  onEmailSignup,
+  isBusy,
+  error,
+  isBootstrapping,
+  isConfigured,
+  isEmailConfigured,
+}) {
+  const [mode, setMode] = useState('google'); // 'google' | 'email-signin' | 'email-signup'
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
   const setupOrigin = typeof window !== 'undefined' ? window.location.origin : '';
   const redirectUri = typeof window !== 'undefined' ? getGoogleOAuthRedirectUri() : '';
 
@@ -1382,9 +1474,18 @@ function SigninScreen({ onSignin, isBusy, error, isBootstrapping, isConfigured }
         </div>
         <p className="eyebrow">Secure your progress</p>
         <h1>Sign in to continue</h1>
-        <p className="panel-copy">Checking your Google sign-in status…</p>
+        <p className="panel-copy">Checking your sign-in status…</p>
       </section>
     );
+  }
+
+  function handleEmailSubmit(event) {
+    event.preventDefault();
+    if (mode === 'email-signup') {
+      onEmailSignup(email, password, fullName);
+    } else {
+      onEmailSignin(email, password);
+    }
   }
 
   return (
@@ -1395,28 +1496,117 @@ function SigninScreen({ onSignin, isBusy, error, isBootstrapping, isConfigured }
       <p className="eyebrow">Secure your progress</p>
       <h1>Sign in to continue</h1>
       <p className="panel-copy">
-        Sign in with Google to save your progress and continue to payment.
+        Save your streak, records, and progress securely.
       </p>
-      {!isConfigured ? (
-        <div className="auth-error">
-          Google sign-in is not configured. Add <code>VITE_GOOGLE_OAUTH_CLIENT_ID</code> to{' '}
-          <code>.env.local</code>, then restart <code>npm run dev</code>.
-        </div>
-      ) : null}
+
       {error ? <div className="auth-error">{error}</div> : null}
-      {import.meta.env.DEV && isConfigured ? (
+      {import.meta.env.DEV && isConfigured && mode === 'google' ? (
         <div className="auth-setup-hint">
           <p>Google Cloud → Web OAuth client:</p>
           <code>Origin: {setupOrigin}</code>
           <code>Redirect URI: {redirectUri}</code>
           {shouldUseGoogleRedirect() ? (
-            <p className="auth-setup-hint__note">WebView detected — sign-in uses full-page redirect (not popup).</p>
+            <p className="auth-setup-hint__note">WebView detected — redirect mode active.</p>
           ) : null}
         </div>
       ) : null}
-      <button className="google-button" type="button" onClick={onSignin} disabled={isBusy || !isConfigured}>
-        {isBusy ? 'Signing in…' : 'Continue with Google'}
-      </button>
+
+      {/* Google Sign-In */}
+      {(mode === 'google') && (
+        <>
+          {isConfigured ? (
+            <button className="google-button" type="button" onClick={onSignin} disabled={isBusy}>
+              {isBusy ? 'Signing in…' : 'Continue with Google'}
+            </button>
+          ) : (
+            <div className="auth-error">
+              Google sign-in is not configured. Add <code>VITE_GOOGLE_OAUTH_CLIENT_ID</code> to{' '}
+              <code>.env.local</code>.
+            </div>
+          )}
+
+          {isEmailConfigured ? (
+            <div className="auth-divider">
+              <span>or</span>
+            </div>
+          ) : null}
+
+          {isEmailConfigured ? (
+            <button
+              className="ghost-action wide"
+              type="button"
+              onClick={() => setMode('email-signin')}
+              disabled={isBusy}
+            >
+              Sign in with Email
+            </button>
+          ) : null}
+        </>
+      )}
+
+      {/* Email Sign-In / Sign-Up */}
+      {(mode === 'email-signin' || mode === 'email-signup') && (
+        <form className="email-auth-form" onSubmit={handleEmailSubmit}>
+          {mode === 'email-signup' ? (
+            <input
+              type="text"
+              placeholder="Full name"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              required
+              autoComplete="name"
+            />
+          ) : null}
+          <input
+            type="email"
+            placeholder="Email address"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete="email"
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            minLength={6}
+            autoComplete={mode === 'email-signup' ? 'new-password' : 'current-password'}
+          />
+          <button className="primary-action wide" type="submit" disabled={isBusy}>
+            {isBusy
+              ? 'Please wait…'
+              : mode === 'email-signup'
+              ? 'Create Account'
+              : 'Sign In'}
+          </button>
+          <div className="auth-toggle-row">
+            {mode === 'email-signin' ? (
+              <>
+                <span>No account?</span>
+                <button type="button" className="link-button" onClick={() => setMode('email-signup')}>
+                  Create one
+                </button>
+              </>
+            ) : (
+              <>
+                <span>Already have an account?</span>
+                <button type="button" className="link-button" onClick={() => setMode('email-signin')}>
+                  Sign in
+                </button>
+              </>
+            )}
+          </div>
+          <button
+            type="button"
+            className="link-button back-link"
+            onClick={() => setMode('google')}
+          >
+            ← Back
+          </button>
+        </form>
+      )}
     </section>
   );
 }
