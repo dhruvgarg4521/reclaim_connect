@@ -3840,8 +3840,6 @@ h3 {
     min-height: 100vh;
     border-radius: 0;
     border: 0;
-    /* Push content below the device status bar (time, battery, signal) */
-    padding-top: env(safe-area-inset-top);
   }
 
   .bottom-nav {
@@ -3916,6 +3914,9 @@ h3 {
 .about-header {
   width: 100%;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 .about-headline {
   margin: 14px 0 6px;
@@ -4021,6 +4022,7 @@ h3 {
 .intro-brand__logo {
   width: min(76%, 240px);
   flex-shrink: 0;
+  margin: 0 auto;
 }
 
 .intro-brand__logo--compact {
